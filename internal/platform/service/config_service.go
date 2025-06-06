@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	"logstash-platform/internal/platform/models"
@@ -224,5 +225,5 @@ func (s *configService) validateConfigContent(configType models.ConfigType, cont
 // containsKeyword 检查内容是否包含关键字
 func containsKeyword(content, keyword string) bool {
 	// 简单的关键字检查，实际应该使用更复杂的解析
-	return len(content) > 0 && len(keyword) > 0
+	return strings.Contains(content, keyword)
 }
