@@ -1,0 +1,105 @@
+# 编译输出
+/bin/
+/build/
+/dist/
+/target/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# 测试覆盖率
+*.test
+*.out
+coverage.txt
+coverage.html
+.coverage
+
+# Go相关
+go.sum
+vendor/
+
+# 依赖目录
+node_modules/
+.npm
+
+# IDE和编辑器
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# 操作系统
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# 日志文件
+*.log
+logs/
+*.log.*
+
+# 环境配置
+.env
+.env.local
+.env.*.local
+config/local.yaml
+config/local.yml
+
+# 敏感信息
+*.key
+*.pem
+*.crt
+*.p12
+secrets/
+credentials/
+
+# 临时文件
+*.tmp
+*.temp
+*.bak
+*.backup
+*.cache
+.tmp/
+
+# Agent相关
+/agent-data/
+/agent-configs/
+
+# 测试数据
+/test-data/
+/mock-data/
+*.test.json
+
+# 构建和部署
+docker-compose.override.yml
+.dockerignore
+kubernetes/secrets/
+
+# 数据库
+*.db
+*.sqlite
+*.sqlite3
+
+# 文档相关（除README.md外的所有文档不上传）
+/docs/**/*.md
+!/docs/README.md
+!/docs/**/README.md
+
+# 文档构建输出
+/docs/_build/
+/docs/.doctrees/
+
+# 调试文件
+debug/
+*.pprof
+
+# 其他
+.history/
+.backup/
