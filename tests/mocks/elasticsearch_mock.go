@@ -38,26 +38,13 @@ func (m *MockElasticsearchClient) Index(ctx context.Context, index, id string, d
 // Get 获取文档
 func (m *MockElasticsearchClient) Get(ctx context.Context, index, id string, result interface{}) error {
 	args := m.Called(ctx, index, id, result)
-	
-	// 如果 mock 设置了返回数据，填充到 result 中
-	if args.Get(0) != nil {
-		// 这里可以根据测试需要进行类型转换和赋值
-		// 例如：*result.(*models.Config) = args.Get(0).(models.Config)
-	}
-	
-	return args.Error(1)
+	return args.Error(0)
 }
 
 // Search 搜索文档
 func (m *MockElasticsearchClient) Search(ctx context.Context, index string, query map[string]interface{}, result interface{}) error {
 	args := m.Called(ctx, index, query, result)
-	
-	// 如果 mock 设置了返回数据，填充到 result 中
-	if args.Get(0) != nil {
-		// 这里可以根据测试需要进行类型转换和赋值
-	}
-	
-	return args.Error(1)
+	return args.Error(0)
 }
 
 // Delete 删除文档

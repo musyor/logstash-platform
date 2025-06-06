@@ -92,6 +92,9 @@ func (r *configRepository) Update(ctx context.Context, config *models.Config) er
 	// 如果内容变更，重置测试状态
 	if config.Content != existing.Content {
 		config.TestStatus = models.TestStatusUntested
+	} else {
+		// 保留原有测试状态
+		config.TestStatus = existing.TestStatus
 	}
 
 	// 更新文档
