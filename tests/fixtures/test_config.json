@@ -1,0 +1,23 @@
+{
+  "valid_filter_config": {
+    "name": "nginx-access-log-parser",
+    "type": "filter",
+    "content": "filter {\n  grok {\n    match => { \"message\" => \"%{COMBINEDAPACHELOG}\" }\n  }\n  date {\n    match => [ \"timestamp\", \"dd/MMM/yyyy:HH:mm:ss Z\" ]\n  }\n}",
+    "description": "Parse nginx access logs",
+    "tags": ["nginx", "access-log", "parser"]
+  },
+  "valid_input_config": {
+    "name": "kafka-input",
+    "type": "input",
+    "content": "input {\n  kafka {\n    bootstrap_servers => \"localhost:9092\"\n    topics => [\"app-logs\"]\n    codec => \"json\"\n  }\n}",
+    "description": "Kafka input configuration",
+    "tags": ["kafka", "input"]
+  },
+  "valid_output_config": {
+    "name": "elasticsearch-output",
+    "type": "output",
+    "content": "output {\n  elasticsearch {\n    hosts => [\"localhost:9200\"]\n    index => \"logstash-%{+YYYY.MM.dd}\"\n  }\n}",
+    "description": "Elasticsearch output configuration",
+    "tags": ["elasticsearch", "output"]
+  }
+}

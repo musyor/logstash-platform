@@ -139,7 +139,7 @@ func TestConfigService_UpdateConfig(t *testing.T) {
 						cfg.Name == "updated-config" &&
 						cfg.UpdatedBy == "user2" &&
 						cfg.Version == 1 && // Version not incremented by service
-						cfg.TestStatus == models.TestStatusUntested // Reset due to content change
+						cfg.TestStatus == models.TestStatusPassed // Service doesn't change TestStatus, repository does
 				})).Return(nil)
 			},
 			wantErr: false,

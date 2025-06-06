@@ -15,7 +15,7 @@ type Server struct {
 	router         *gin.Engine
 	logger         *logrus.Logger
 	esClient       *elasticsearch.Client
-	configService  *service.ConfigService
+	configService  service.ConfigService
 }
 
 // NewServer 创建新的API服务器

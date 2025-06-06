@@ -54,14 +54,32 @@ dev:
 .PHONY: test
 test:
 	@echo "运行测试..."
-	$(GOTEST) -v ./...
+	$(GOTEST) -v -race ./...
+
+# 单元测试
+.PHONY: test-unit
+test-unit:
+	@echo "运行单元测试..."
+	$(GOTEST) -v -race ./internal/... ./pkg/...
+
+# 集成测试
+.PHONY: test-integration
+test-integration:
+	@echo "运行集成测试..."
+	$(GOTEST) -v -race ./tests/integration/...
 
 # 测试覆盖率
 .PHONY: test-coverage
 test-coverage:
 	@echo "运行测试并生成覆盖率报告..."
-	$(GOTEST) -v -coverprofile=coverage.out ./...
+	$(GOTEST) -v -race -coverprofile=coverage.out -covermode=atomic ./...
 	$(GOCMD) tool cover -html=coverage.out -o coverage.html
+	@echo "覆盖率报告已生成: coverage.html"
+
+# 查看覆盖率
+.PHONY: coverage-view
+coverage-view: test-coverage
+	@$(GOCMD) tool cover -func=coverage.out
 
 # 清理
 .PHONY: clean
