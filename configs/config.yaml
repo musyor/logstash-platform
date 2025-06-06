@@ -1,0 +1,81 @@
+# Logstash Platform 配置文件
+
+# 服务器配置
+server:
+  port: 8080
+  mode: debug  # debug, release
+  read_timeout: 30s
+  write_timeout: 30s
+
+# Elasticsearch配置
+elasticsearch:
+  addresses:
+    - http://localhost:9200
+  username: ""
+  password: ""
+  # 索引配置
+  indices:
+    configs: "logstash_configs"
+    config_history: "logstash_config_history"
+    agents: "logstash_agents"
+  # 连接配置
+  max_retries: 3
+  timeout: 30s
+
+# WebSocket配置
+websocket:
+  ping_interval: 30s
+  pong_timeout: 60s
+  write_buffer_size: 1024
+  read_buffer_size: 1024
+
+# 日志配置
+logging:
+  level: info  # debug, info, warn, error
+  format: json  # json, text
+  output: stdout  # stdout, file
+  file:
+    path: "./logs/platform.log"
+    max_size: 100  # MB
+    max_backups: 5
+    max_age: 30  # days
+
+# Kafka配置（用于测试）
+kafka:
+  brokers:
+    - localhost:9092
+  version: "2.8.0"
+  consumer:
+    group_prefix: "logstash-test-"
+    session_timeout: 10s
+    offset_initial: -2  # OffsetNewest
+
+# 测试引擎配置
+test_engine:
+  logstash_bin: "/usr/share/logstash/bin/logstash"
+  temp_dir: "/tmp/logstash-test"
+  max_concurrent_tests: 5
+  test_timeout: 60s
+
+# 安全配置
+security:
+  jwt_secret: "your-secret-key-here"
+  jwt_expire_hours: 24
+  cors:
+    enabled: true
+    allowed_origins:
+      - "http://localhost:3000"
+      - "http://localhost:8080"
+    allowed_methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    allowed_headers:
+      - Authorization
+      - Content-Type
+    exposed_headers:
+      - Content-Length
+    allow_credentials: true
+    max_age: 86400
