@@ -12,7 +12,7 @@ type ClientInterface interface {
 	IndexExists(ctx context.Context, index string) (bool, error)
 
 	// CreateIndex 创建索引
-	CreateIndex(ctx context.Context, index string, mapping map[string]interface{}) error
+	CreateIndex(ctx context.Context, index string, mapping string) error
 
 	// Index 索引文档
 	Index(ctx context.Context, index, id string, doc interface{}) error

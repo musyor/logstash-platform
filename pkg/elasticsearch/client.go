@@ -14,11 +14,15 @@ import (
 )
 
 // Client ES客户端封装
+// 实现 ClientInterface 接口
 type Client struct {
 	es     *elasticsearch.Client
 	logger *logrus.Logger
 	config *Config
 }
+
+// 确保 Client 实现了 ClientInterface 接口
+var _ ClientInterface = (*Client)(nil)
 
 // Config ES配置
 type Config struct {
@@ -35,7 +39,7 @@ type Config struct {
 }
 
 // NewClient 创建新的ES客户端
-func NewClient(logger *logrus.Logger) (*Client, error) {
+func NewClient(logger *logrus.Logger) (ClientInterface, error) {
 	config := &Config{
 		Addresses:  viper.GetStringSlice("elasticsearch.addresses"),
 		Username:   viper.GetString("elasticsearch.username"),

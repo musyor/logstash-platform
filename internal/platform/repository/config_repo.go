@@ -24,12 +24,12 @@ type ConfigRepository interface {
 
 // configRepository 配置仓库实现
 type configRepository struct {
-	esClient *elasticsearch.Client
+	esClient elasticsearch.ClientInterface
 	logger   *logrus.Logger
 }
 
 // NewConfigRepository 创建配置仓库
-func NewConfigRepository(esClient *elasticsearch.Client, logger *logrus.Logger) ConfigRepository {
+func NewConfigRepository(esClient elasticsearch.ClientInterface, logger *logrus.Logger) ConfigRepository {
 	return &configRepository{
 		esClient: esClient,
 		logger:   logger,

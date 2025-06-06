@@ -14,12 +14,12 @@ import (
 type Server struct {
 	router         *gin.Engine
 	logger         *logrus.Logger
-	esClient       *elasticsearch.Client
+	esClient       elasticsearch.ClientInterface
 	configService  service.ConfigService
 }
 
 // NewServer 创建新的API服务器
-func NewServer(logger *logrus.Logger, esClient *elasticsearch.Client) *Server {
+func NewServer(logger *logrus.Logger, esClient elasticsearch.ClientInterface) *Server {
 	// 创建仓库层
 	configRepo := repository.NewConfigRepository(esClient, logger)
 	
