@@ -87,6 +87,11 @@ kubernetes/secrets/
 *.sqlite
 *.sqlite3
 
+# 文档相关（除README.md外的所有文档不上传）
+/docs/**/*.md
+!/docs/README.md
+!/docs/**/README.md
+
 # 文档构建输出
 /docs/_build/
 /docs/.doctrees/
