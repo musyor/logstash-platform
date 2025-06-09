@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -187,5 +188,5 @@ func (c *AgentConfig) GetLogstashConfigPath(configID string) string {
 
 // GetConfigBackupPath 获取配置备份路径
 func (c *AgentConfig) GetConfigBackupPath(configID string, version int) string {
-	return fmt.Sprintf("%s/%s.conf.backup.%d", c.ConfigDir, configID, version)
+	return filepath.Join(c.ConfigDir, ".backup", fmt.Sprintf("%s.conf.backup.%d", configID, version))
 }

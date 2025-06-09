@@ -6,6 +6,8 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,6 +43,17 @@ func NewManager(cfg *AgentConfig, logger *logrus.Logger) (*Manager, error) {
 	// 确保配置目录存在
 	if err := os.MkdirAll(cfg.ConfigDir, 0755); err != nil {
 		return nil, fmt.Errorf("创建配置目录失败: %w", err)
+	}
+	
+	// 创建必要的子目录
+	metadataDir := filepath.Join(cfg.ConfigDir, ".metadata")
+	if err := os.MkdirAll(metadataDir, 0755); err != nil {
+		return nil, fmt.Errorf("创建元数据目录失败: %w", err)
+	}
+	
+	backupDir := filepath.Join(cfg.ConfigDir, ".backup")
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		return nil, fmt.Errorf("创建备份目录失败: %w", err)
 	}
 	
 	manager := &Manager{
@@ -89,12 +102,20 @@ func (m *Manager) SaveConfig(config *models.Config) error {
 	m.configsMux.Unlock()
 	
 	// 保存元数据
+	// 先尝试加载现有元数据以保留备份路径
+	existingMetadata, _ := m.loadConfigMetadata(config.ID)
+	
 	metadata := &ConfigMetadata{
 		ConfigID:  config.ID,
 		Version:   config.Version,
 		FilePath:  configPath,
 		AppliedAt: time.Now(),
 		Hash:      m.calculateHash(config.Content),
+	}
+	
+	// 保留现有的备份路径
+	if existingMetadata != nil {
+		metadata.BackupPaths = existingMetadata.BackupPaths
 	}
 	
 	if err := m.saveConfigMetadata(config.ID, metadata); err != nil {
@@ -185,24 +206,25 @@ func (m *Manager) DeleteConfig(configID string) error {
 
 // ListConfigs 列出所有本地配置
 func (m *Manager) ListConfigs() ([]*models.Config, error) {
-	// 扫描配置目录
-	files, err := ioutil.ReadDir(m.config.ConfigDir)
+	// 从元数据目录读取所有配置
+	metadataDir := filepath.Join(m.config.ConfigDir, ".metadata")
+	files, err := ioutil.ReadDir(metadataDir)
 	if err != nil {
-		return nil, fmt.Errorf("读取配置目录失败: %w", err)
+		if os.IsNotExist(err) {
+			return []*models.Config{}, nil
+		}
+		return nil, fmt.Errorf("读取元数据目录失败: %w", err)
 	}
 	
 	var configs []*models.Config
 	for _, file := range files {
-		// 跳过非配置文件
-		if file.IsDir() || !isConfigFile(file.Name()) {
+		// 跳过非JSON文件
+		if file.IsDir() || !strings.HasSuffix(file.Name(), ".json") {
 			continue
 		}
 		
 		// 从文件名提取配置ID
-		configID := extractConfigID(file.Name())
-		if configID == "" {
-			continue
-		}
+		configID := strings.TrimSuffix(file.Name(), ".json")
 		
 		// 加载配置
 		config, err := m.LoadConfig(configID)
@@ -242,6 +264,15 @@ func (m *Manager) BackupConfig(configID string) error {
 	version := 1
 	if err == nil && metadata != nil {
 		version = metadata.Version
+	} else {
+		// 如果元数据不存在，创建新的
+		metadata = &ConfigMetadata{
+			ConfigID:    configID,
+			Version:     version,
+			FilePath:    configPath,
+			AppliedAt:   time.Now(),
+			BackupPaths: []string{},
+		}
 	}
 	
 	// 生成备份文件路径
@@ -253,19 +284,17 @@ func (m *Manager) BackupConfig(configID string) error {
 	}
 	
 	// 更新元数据
-	if metadata != nil {
-		metadata.BackupPaths = append(metadata.BackupPaths, backupPath)
-		// 限制备份数量
-		if len(metadata.BackupPaths) > m.config.ConfigBackupCount {
-			// 删除最旧的备份
-			oldBackup := metadata.BackupPaths[0]
-			if err := os.Remove(oldBackup); err != nil {
-				m.logger.WithError(err).Warn("删除旧备份失败")
-			}
-			metadata.BackupPaths = metadata.BackupPaths[1:]
+	metadata.BackupPaths = append(metadata.BackupPaths, backupPath)
+	// 限制备份数量
+	if len(metadata.BackupPaths) > m.config.ConfigBackupCount {
+		// 删除最旧的备份
+		oldBackup := metadata.BackupPaths[0]
+		if err := os.Remove(oldBackup); err != nil {
+			m.logger.WithError(err).Warn("删除旧备份失败")
 		}
-		m.saveConfigMetadata(configID, metadata)
+		metadata.BackupPaths = metadata.BackupPaths[1:]
 	}
+	m.saveConfigMetadata(configID, metadata)
 	
 	m.logger.WithFields(logrus.Fields{
 		"config_id": configID,
@@ -301,6 +330,24 @@ func (m *Manager) RestoreConfig(configID string) error {
 	if err := ioutil.WriteFile(configPath, content, 0644); err != nil {
 		return fmt.Errorf("恢复配置文件失败: %w", err)
 	}
+	
+	// 从备份路径提取版本号
+	// 格式: xxx.conf.backup.{version}
+	parts := strings.Split(backupPath, ".")
+	if len(parts) > 0 {
+		if versionStr := parts[len(parts)-1]; versionStr != "" {
+			if version, err := strconv.Atoi(versionStr); err == nil {
+				// 更新元数据中的版本号
+				metadata.Version = version
+				m.saveConfigMetadata(configID, metadata)
+			}
+		}
+	}
+	
+	// 清除缓存，强制重新加载
+	m.configsMux.Lock()
+	delete(m.configs, configID)
+	m.configsMux.Unlock()
 	
 	m.logger.WithFields(logrus.Fields{
 		"config_id": configID,
@@ -340,26 +387,39 @@ func (m *Manager) loadMetadata() error {
 
 // saveConfigMetadata 保存单个配置的元数据
 func (m *Manager) saveConfigMetadata(configID string, metadata *ConfigMetadata) error {
-	// 加载现有元数据
-	allMetadata := make(map[string]*ConfigMetadata)
-	if data, err := ioutil.ReadFile(m.metadataFile); err == nil {
-		json.Unmarshal(data, &allMetadata)
-	}
+	// 保存到单独的元数据文件
+	metadataPath := filepath.Join(m.config.ConfigDir, ".metadata", configID+".json")
 	
-	// 更新元数据
-	allMetadata[configID] = metadata
-	
-	// 保存到文件
-	data, err := json.MarshalIndent(allMetadata, "", "  ")
+	data, err := json.MarshalIndent(metadata, "", "  ")
 	if err != nil {
 		return err
 	}
 	
-	return ioutil.WriteFile(m.metadataFile, data, 0644)
+	// 同时保存到总的元数据文件（向后兼容）
+	allMetadata := make(map[string]*ConfigMetadata)
+	if data, err := ioutil.ReadFile(m.metadataFile); err == nil {
+		json.Unmarshal(data, &allMetadata)
+	}
+	allMetadata[configID] = metadata
+	
+	if allData, err := json.MarshalIndent(allMetadata, "", "  "); err == nil {
+		ioutil.WriteFile(m.metadataFile, allData, 0644)
+	}
+	
+	return ioutil.WriteFile(metadataPath, data, 0644)
 }
 
 // loadConfigMetadata 加载单个配置的元数据
 func (m *Manager) loadConfigMetadata(configID string) (*ConfigMetadata, error) {
+	// 优先从单独的元数据文件读取
+	metadataPath := filepath.Join(m.config.ConfigDir, ".metadata", configID+".json")
+	if data, err := ioutil.ReadFile(metadataPath); err == nil {
+		var metadata ConfigMetadata
+		if err := json.Unmarshal(data, &metadata); err == nil {
+			return &metadata, nil
+		}
+	}
+	
 	// 加载所有元数据
 	allMetadata := make(map[string]*ConfigMetadata)
 	if data, err := ioutil.ReadFile(m.metadataFile); err == nil {
@@ -378,7 +438,13 @@ func (m *Manager) loadConfigMetadata(configID string) (*ConfigMetadata, error) {
 
 // deleteConfigMetadata 删除配置元数据
 func (m *Manager) deleteConfigMetadata(configID string) error {
-	// 加载现有元数据
+	// 删除单独的元数据文件
+	metadataPath := filepath.Join(m.config.ConfigDir, ".metadata", configID+".json")
+	if err := os.Remove(metadataPath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	
+	// 同时更新总的元数据文件（向后兼容）
 	allMetadata := make(map[string]*ConfigMetadata)
 	if data, err := ioutil.ReadFile(m.metadataFile); err == nil {
 		json.Unmarshal(data, &allMetadata)
@@ -388,12 +454,11 @@ func (m *Manager) deleteConfigMetadata(configID string) error {
 	delete(allMetadata, configID)
 	
 	// 保存到文件
-	data, err := json.MarshalIndent(allMetadata, "", "  ")
-	if err != nil {
-		return err
+	if data, err := json.MarshalIndent(allMetadata, "", "  "); err == nil {
+		ioutil.WriteFile(m.metadataFile, data, 0644)
 	}
 	
-	return ioutil.WriteFile(m.metadataFile, data, 0644)
+	return nil
 }
 
 // calculateHash 计算配置内容哈希
