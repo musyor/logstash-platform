@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"logstash-platform/internal/agent/client"
 	"logstash-platform/internal/agent/config"
 	"logstash-platform/internal/platform/models"
 )
@@ -79,6 +78,36 @@ func NewAgent(cfg *config.AgentConfig, logger *logrus.Logger) (*Agent, error) {
 	return agent, nil
 }
 
+// WithAPIClient 设置API客户端
+func (a *Agent) WithAPIClient(client APIClient) *Agent {
+	a.apiClient = client
+	return a
+}
+
+// WithConfigManager 设置配置管理器
+func (a *Agent) WithConfigManager(mgr ConfigManager) *Agent {
+	a.configMgr = mgr
+	return a
+}
+
+// WithLogstashController 设置Logstash控制器
+func (a *Agent) WithLogstashController(ctrl LogstashController) *Agent {
+	a.logstashCtrl = ctrl
+	return a
+}
+
+// WithHeartbeatService 设置心跳服务
+func (a *Agent) WithHeartbeatService(service HeartbeatService) *Agent {
+	a.heartbeat = service
+	return a
+}
+
+// WithMetricsCollector 设置指标收集器
+func (a *Agent) WithMetricsCollector(collector MetricsCollector) *Agent {
+	a.metrics = collector
+	return a
+}
+
 // Start 启动Agent
 func (a *Agent) Start(ctx context.Context) error {
 	a.logger.Info("正在启动Agent...")
@@ -86,9 +115,9 @@ func (a *Agent) Start(ctx context.Context) error {
 	// 创建带取消的上下文
 	a.ctx, a.cancel = context.WithCancel(ctx)
 	
-	// 初始化组件
-	if err := a.initComponents(); err != nil {
-		return fmt.Errorf("初始化组件失败: %w", err)
+	// 验证组件
+	if err := a.validateComponents(); err != nil {
+		return fmt.Errorf("组件验证失败: %w", err)
 	}
 	
 	// 注册到管理平台
@@ -237,71 +266,23 @@ func (a *Agent) GetStatus() *models.Agent {
 	return &status
 }
 
-// initComponents 初始化组件
-func (a *Agent) initComponents() error {
-	var err error
-	
-	// 创建API客户端
-	a.apiClient, err = a.createAPIClient()
-	if err != nil {
-		return fmt.Errorf("创建API客户端失败: %w", err)
+// validateComponents 验证组件
+func (a *Agent) validateComponents() error {
+	if a.apiClient == nil {
+		return fmt.Errorf("API客户端未设置")
 	}
-	
-	// 创建配置管理器
-	a.configMgr, err = a.createConfigManager()
-	if err != nil {
-		return fmt.Errorf("创建配置管理器失败: %w", err)
+	if a.configMgr == nil {
+		return fmt.Errorf("配置管理器未设置")
 	}
-	
-	// 创建Logstash控制器
-	a.logstashCtrl = a.createLogstashController()
-	
-	// 创建心跳服务
-	a.heartbeat = a.createHeartbeatService()
-	
-	// 创建指标收集器
-	a.metrics = a.createMetricsCollector()
-	
-	return nil
-}
-
-// createAPIClient 创建API客户端
-func (a *Agent) createAPIClient() (APIClient, error) {
-	// 这里需要导入client包并创建客户端
-	// 暂时返回nil，实际使用时需要：
-	// return client.NewClient(a.config, a.logger)
-	return nil, fmt.Errorf("API客户端创建未实现")
-}
-
-// createConfigManager 创建配置管理器
-func (a *Agent) createConfigManager() (ConfigManager, error) {
-	// 这里需要导入config包并创建管理器
-	// 暂时返回nil，实际使用时需要：
-	// return config.NewManager(a.config, a.logger)
-	return nil, fmt.Errorf("配置管理器创建未实现")
-}
-
-// createLogstashController 创建Logstash控制器
-func (a *Agent) createLogstashController() LogstashController {
-	// 这里需要导入logstash包并创建控制器
-	// 暂时返回nil，实际使用时需要：
-	// return logstash.NewController(a.config, a.logger)
-	return nil
-}
-
-// createHeartbeatService 创建心跳服务
-func (a *Agent) createHeartbeatService() HeartbeatService {
-	// 这里需要导入services包并创建服务
-	// 暂时返回nil，实际使用时需要：
-	// return services.NewHeartbeatService(a.config.AgentID, a.apiClient, a.logger)
-	return nil
-}
-
-// createMetricsCollector 创建指标收集器
-func (a *Agent) createMetricsCollector() MetricsCollector {
-	// 这里需要导入services包并创建收集器
-	// 暂时返回nil，实际使用时需要：
-	// return services.NewMetricsCollector(a.config.AgentID, a.apiClient, a.logstashCtrl, a.logger)
+	if a.logstashCtrl == nil {
+		return fmt.Errorf("Logstash控制器未设置")
+	}
+	if a.heartbeat == nil {
+		return fmt.Errorf("心跳服务未设置")
+	}
+	if a.metrics == nil {
+		return fmt.Errorf("指标收集器未设置")
+	}
 	return nil
 }
 
@@ -558,9 +539,9 @@ func (a *Agent) handleStatusRequest() error {
 	// 获取当前状态
 	status := a.GetStatus()
 	
-	// 通过WebSocket发送状态
-	if err := a.apiClient.(*client.Client).SendMessage(MsgTypeStatusReport, status); err != nil {
-		return fmt.Errorf("发送状态失败: %w", err)
+	// 直接上报状态
+	if err := a.apiClient.ReportStatus(a.ctx, status); err != nil {
+		return fmt.Errorf("上报状态失败: %w", err)
 	}
 	
 	return nil
@@ -575,12 +556,9 @@ func (a *Agent) handleMetricsRequest() error {
 		return fmt.Errorf("获取指标失败: %w", err)
 	}
 	
-	// 通过WebSocket发送指标
-	if err := a.apiClient.(*client.Client).SendMessage(MsgTypeMetricsReport, map[string]interface{}{
-		"agent_id": a.config.AgentID,
-		"metrics":  metrics,
-	}); err != nil {
-		return fmt.Errorf("发送指标失败: %w", err)
+	// 上报指标
+	if err := a.apiClient.ReportMetrics(a.ctx, a.config.AgentID, metrics); err != nil {
+		return fmt.Errorf("上报指标失败: %w", err)
 	}
 	
 	return nil

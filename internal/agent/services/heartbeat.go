@@ -35,7 +35,7 @@ type HeartbeatService struct {
 }
 
 // NewHeartbeatService 创建心跳服务
-func NewHeartbeatService(agentID string, apiClient core.APIClient, logger *logrus.Logger) core.HeartbeatService {
+func NewHeartbeatService(agentID string, apiClient core.APIClient, logger *logrus.Logger) *HeartbeatService {
 	return &HeartbeatService{
 		agentID:   agentID,
 		apiClient: apiClient,
@@ -57,12 +57,12 @@ func (h *HeartbeatService) Start(ctx context.Context) error {
 	h.ctx, h.cancel = context.WithCancel(ctx)
 	h.running = true
 	
-	// 立即发送一次心跳
-	h.sendHeartbeat()
-	
 	// 启动心跳循环
 	h.wg.Add(1)
 	go h.heartbeatLoop()
+	
+	// 立即发送一次心跳（在goroutine中避免死锁）
+	go h.sendHeartbeat()
 	
 	return nil
 }

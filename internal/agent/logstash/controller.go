@@ -2,7 +2,6 @@ package logstash
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -316,15 +315,9 @@ func (c *Controller) handleOutput(pipe io.ReadCloser, output chan<- string) {
 	for scanner.Scan() {
 		select {
 		case output <- scanner.Text():
+			// 成功发送
 		case <-c.stopChan:
 			return
-		default:
-			// 通道满了，丢弃旧日志
-			select {
-			case <-output:
-			default:
-			}
-			output <- scanner.Text()
 		}
 	}
 }

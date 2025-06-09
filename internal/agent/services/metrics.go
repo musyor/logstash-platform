@@ -44,7 +44,7 @@ type MetricsCollector struct {
 }
 
 // NewMetricsCollector 创建指标收集器
-func NewMetricsCollector(agentID string, apiClient core.APIClient, logstashCtrl core.LogstashController, logger *logrus.Logger) core.MetricsCollector {
+func NewMetricsCollector(agentID string, apiClient core.APIClient, logstashCtrl core.LogstashController, logger *logrus.Logger) *MetricsCollector {
 	return &MetricsCollector{
 		agentID:      agentID,
 		apiClient:    apiClient,

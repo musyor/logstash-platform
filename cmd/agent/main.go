@@ -11,8 +11,11 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"logstash-platform/internal/agent/client"
 	"logstash-platform/internal/agent/config"
 	"logstash-platform/internal/agent/core"
+	"logstash-platform/internal/agent/logstash"
+	"logstash-platform/internal/agent/services"
 	"logstash-platform/pkg/logger"
 )
 
@@ -67,7 +70,7 @@ func main() {
 	}
 
 	// 创建Agent实例
-	agent, err := core.NewAgent(cfg, log)
+	agent, err := createAgent(cfg, log)
 	if err != nil {
 		log.WithError(err).Fatal("创建Agent失败")
 	}
@@ -146,4 +149,44 @@ func loadConfig(configFile, agentID, serverURL string) (*config.AgentConfig, err
 	}
 
 	return cfg, nil
+}
+
+// createAgent 创建完整的Agent实例
+func createAgent(cfg *config.AgentConfig, logger *logrus.Logger) (*core.Agent, error) {
+	// 创建基本Agent
+	agent, err := core.NewAgent(cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	// 创建API客户端
+	apiClient, err := client.NewClient(cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	// 创建配置管理器
+	configMgr, err := config.NewManager(cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	// 创建Logstash控制器
+	logstashCtrl := logstash.NewController(cfg, logger)
+
+	// 创建心跳服务
+	heartbeat := services.NewHeartbeatService(cfg.AgentID, apiClient, logger)
+
+	// 创建指标收集器
+	metrics := services.NewMetricsCollector(cfg.AgentID, apiClient, logstashCtrl, logger)
+
+	// 组装Agent
+	agent.
+		WithAPIClient(apiClient).
+		WithConfigManager(configMgr).
+		WithLogstashController(logstashCtrl).
+		WithHeartbeatService(heartbeat).
+		WithMetricsCollector(metrics)
+
+	return agent, nil
 }

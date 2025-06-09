@@ -43,6 +43,9 @@ type APIClient interface {
 	// ConnectWebSocket 建立WebSocket连接
 	ConnectWebSocket(ctx context.Context, agentID string, handler MessageHandler) error
 	
+	// ReportMetrics 上报指标
+	ReportMetrics(ctx context.Context, agentID string, metrics *AgentMetrics) error
+	
 	// Close 关闭客户端
 	Close() error
 }

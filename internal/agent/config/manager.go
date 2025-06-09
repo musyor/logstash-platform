@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"logstash-platform/internal/agent/core"
 	"logstash-platform/internal/platform/models"
 )
 
@@ -38,7 +37,7 @@ type ConfigMetadata struct {
 }
 
 // NewManager 创建配置管理器
-func NewManager(cfg *AgentConfig, logger *logrus.Logger) (core.ConfigManager, error) {
+func NewManager(cfg *AgentConfig, logger *logrus.Logger) (*Manager, error) {
 	// 确保配置目录存在
 	if err := os.MkdirAll(cfg.ConfigDir, 0755); err != nil {
 		return nil, fmt.Errorf("创建配置目录失败: %w", err)

@@ -1,0 +1,39 @@
+# Logstash Agent 配置示例
+# 复制此文件为 agent.yaml 并根据实际情况修改
+
+# Agent基础配置
+agent_id: ""  # 留空将使用主机名
+server_url: "http://localhost:8080"  # 管理平台地址
+token: ""  # 认证令牌（如果需要）
+
+# Logstash配置
+logstash_path: "/usr/share/logstash/bin/logstash"  # Logstash可执行文件路径
+config_dir: "/etc/logstash/conf.d"  # 配置文件目录
+data_dir: "/var/lib/logstash"  # 数据目录
+log_dir: "/var/log/logstash"  # 日志目录
+pipeline_workers: 2  # Pipeline工作线程数
+batch_size: 125  # 批处理大小
+
+# 通信配置
+heartbeat_interval: 30s  # 心跳间隔
+metrics_interval: 60s  # 指标上报间隔
+reconnect_interval: 5s  # 重连间隔
+request_timeout: 30s  # 请求超时
+max_reconnect_attempts: 10  # 最大重连次数
+
+# WebSocket配置
+enable_websocket: true  # 是否启用WebSocket
+websocket_ping_interval: 30s  # WebSocket Ping间隔
+
+# TLS配置（可选）
+tls_enabled: false  # 是否启用TLS
+tls_cert_file: ""  # 客户端证书文件路径
+tls_key_file: ""  # 客户端密钥文件路径
+tls_ca_file: ""  # CA证书文件路径
+tls_skip_verify: false  # 是否跳过证书验证（仅用于测试）
+
+# 高级配置
+max_config_size: 10485760  # 最大配置文件大小（10MB）
+config_backup_count: 3  # 配置备份数量
+enable_auto_reload: true  # 是否启用自动重载
+reload_debounce_time: 5s  # 重载防抖时间
