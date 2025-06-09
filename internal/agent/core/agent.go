@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -428,11 +429,9 @@ func getLocalIP() (string, error) {
 
 // getHostname 获取主机名
 func getHostname() (string, error) {
-	hostname, err := net.LookupAddr("127.0.0.1")
-	if err == nil && len(hostname) > 0 {
-		return hostname[0], nil
+	hostname, err := os.Hostname()
+	if err != nil {
+		return "", err
 	}
-	
-	// 如果DNS查找失败，返回错误
-	return "", err
+	return hostname, nil
 }
