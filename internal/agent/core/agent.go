@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"logstash-platform/internal/agent/client"
 	"logstash-platform/internal/agent/config"
 	"logstash-platform/internal/platform/models"
 )
@@ -238,9 +239,69 @@ func (a *Agent) GetStatus() *models.Agent {
 
 // initComponents 初始化组件
 func (a *Agent) initComponents() error {
-	// TODO: 初始化各个组件
-	// 这里需要根据实际实现来创建组件实例
+	var err error
 	
+	// 创建API客户端
+	a.apiClient, err = a.createAPIClient()
+	if err != nil {
+		return fmt.Errorf("创建API客户端失败: %w", err)
+	}
+	
+	// 创建配置管理器
+	a.configMgr, err = a.createConfigManager()
+	if err != nil {
+		return fmt.Errorf("创建配置管理器失败: %w", err)
+	}
+	
+	// 创建Logstash控制器
+	a.logstashCtrl = a.createLogstashController()
+	
+	// 创建心跳服务
+	a.heartbeat = a.createHeartbeatService()
+	
+	// 创建指标收集器
+	a.metrics = a.createMetricsCollector()
+	
+	return nil
+}
+
+// createAPIClient 创建API客户端
+func (a *Agent) createAPIClient() (APIClient, error) {
+	// 这里需要导入client包并创建客户端
+	// 暂时返回nil，实际使用时需要：
+	// return client.NewClient(a.config, a.logger)
+	return nil, fmt.Errorf("API客户端创建未实现")
+}
+
+// createConfigManager 创建配置管理器
+func (a *Agent) createConfigManager() (ConfigManager, error) {
+	// 这里需要导入config包并创建管理器
+	// 暂时返回nil，实际使用时需要：
+	// return config.NewManager(a.config, a.logger)
+	return nil, fmt.Errorf("配置管理器创建未实现")
+}
+
+// createLogstashController 创建Logstash控制器
+func (a *Agent) createLogstashController() LogstashController {
+	// 这里需要导入logstash包并创建控制器
+	// 暂时返回nil，实际使用时需要：
+	// return logstash.NewController(a.config, a.logger)
+	return nil
+}
+
+// createHeartbeatService 创建心跳服务
+func (a *Agent) createHeartbeatService() HeartbeatService {
+	// 这里需要导入services包并创建服务
+	// 暂时返回nil，实际使用时需要：
+	// return services.NewHeartbeatService(a.config.AgentID, a.apiClient, a.logger)
+	return nil
+}
+
+// createMetricsCollector 创建指标收集器
+func (a *Agent) createMetricsCollector() MetricsCollector {
+	// 这里需要导入services包并创建收集器
+	// 暂时返回nil，实际使用时需要：
+	// return services.NewMetricsCollector(a.config.AgentID, a.apiClient, a.logstashCtrl, a.logger)
 	return nil
 }
 
@@ -376,27 +437,152 @@ func (a *Agent) OnDisconnect(err error) {
 
 // 消息处理方法
 func (a *Agent) handleConfigDeploy(payload json.RawMessage) error {
-	// TODO: 实现配置部署逻辑
-	return nil
+	// 解析配置部署请求
+	var req struct {
+		ConfigID string `json:"config_id"`
+		Version  int    `json:"version"`
+	}
+	
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return fmt.Errorf("解析配置部署请求失败: %w", err)
+	}
+	
+	a.logger.WithFields(logrus.Fields{
+		"config_id": req.ConfigID,
+		"version":   req.Version,
+	}).Info("收到配置部署请求")
+	
+	// 获取配置内容
+	config, err := a.apiClient.GetConfig(a.ctx, req.ConfigID)
+	if err != nil {
+		return fmt.Errorf("获取配置失败: %w", err)
+	}
+	
+	// 保存配置
+	if err := a.configMgr.SaveConfig(config); err != nil {
+		return fmt.Errorf("保存配置失败: %w", err)
+	}
+	
+	// 重载Logstash
+	if a.config.EnableAutoReload && a.logstashCtrl.IsRunning() {
+		if err := a.logstashCtrl.Reload(a.ctx); err != nil {
+			a.logger.WithError(err).Error("重载Logstash失败")
+			// 不返回错误，允许继续
+		}
+	}
+	
+	// 更新已应用配置
+	applied := models.AppliedConfig{
+		ConfigID:  req.ConfigID,
+		Version:   req.Version,
+		AppliedAt: time.Now(),
+	}
+	
+	a.updateStatus(func(s *models.Agent) {
+		// 检查是否已存在
+		found := false
+		for i, ac := range s.AppliedConfigs {
+			if ac.ConfigID == req.ConfigID {
+				s.AppliedConfigs[i] = applied
+				found = true
+				break
+			}
+		}
+		if !found {
+			s.AppliedConfigs = append(s.AppliedConfigs, applied)
+		}
+	})
+	
+	// 上报配置应用结果
+	return a.apiClient.ReportConfigApplied(a.ctx, a.config.AgentID, &applied)
 }
 
 func (a *Agent) handleConfigDelete(payload json.RawMessage) error {
-	// TODO: 实现配置删除逻辑
+	// 解析配置删除请求
+	var req struct {
+		ConfigID string `json:"config_id"`
+	}
+	
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return fmt.Errorf("解析配置删除请求失败: %w", err)
+	}
+	
+	a.logger.WithField("config_id", req.ConfigID).Info("收到配置删除请求")
+	
+	// 删除配置
+	if err := a.configMgr.DeleteConfig(req.ConfigID); err != nil {
+		return fmt.Errorf("删除配置失败: %w", err)
+	}
+	
+	// 更新状态
+	a.updateStatus(func(s *models.Agent) {
+		// 从已应用配置中移除
+		newConfigs := make([]models.AppliedConfig, 0, len(s.AppliedConfigs))
+		for _, ac := range s.AppliedConfigs {
+			if ac.ConfigID != req.ConfigID {
+				newConfigs = append(newConfigs, ac)
+			}
+		}
+		s.AppliedConfigs = newConfigs
+	})
+	
+	// 重载Logstash
+	if a.config.EnableAutoReload && a.logstashCtrl.IsRunning() {
+		if err := a.logstashCtrl.Reload(a.ctx); err != nil {
+			a.logger.WithError(err).Error("重载Logstash失败")
+		}
+	}
+	
 	return nil
 }
 
 func (a *Agent) handleReloadRequest() error {
-	// TODO: 实现重载请求逻辑
+	a.logger.Info("收到重载请求")
+	
+	if !a.logstashCtrl.IsRunning() {
+		return fmt.Errorf("Logstash未运行")
+	}
+	
+	// 执行重载
+	if err := a.logstashCtrl.Reload(a.ctx); err != nil {
+		return fmt.Errorf("重载失败: %w", err)
+	}
+	
+	a.logger.Info("Logstash重载成功")
 	return nil
 }
 
 func (a *Agent) handleStatusRequest() error {
-	// TODO: 实现状态请求逻辑
+	a.logger.Debug("收到状态请求")
+	
+	// 获取当前状态
+	status := a.GetStatus()
+	
+	// 通过WebSocket发送状态
+	if err := a.apiClient.(*client.Client).SendMessage(MsgTypeStatusReport, status); err != nil {
+		return fmt.Errorf("发送状态失败: %w", err)
+	}
+	
 	return nil
 }
 
 func (a *Agent) handleMetricsRequest() error {
-	// TODO: 实现指标请求逻辑
+	a.logger.Debug("收到指标请求")
+	
+	// 获取当前指标
+	metrics, err := a.metrics.GetMetrics()
+	if err != nil {
+		return fmt.Errorf("获取指标失败: %w", err)
+	}
+	
+	// 通过WebSocket发送指标
+	if err := a.apiClient.(*client.Client).SendMessage(MsgTypeMetricsReport, map[string]interface{}{
+		"agent_id": a.config.AgentID,
+		"metrics":  metrics,
+	}); err != nil {
+		return fmt.Errorf("发送指标失败: %w", err)
+	}
+	
 	return nil
 }
 
