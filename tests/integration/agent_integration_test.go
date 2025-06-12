@@ -11,11 +11,9 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"logstash-platform/internal/agent/client"
 	"logstash-platform/internal/agent/config"
 	"logstash-platform/internal/agent/core"
-	"logstash-platform/internal/agent/logstash"
-	"logstash-platform/internal/agent/services"
+	"logstash-platform/internal/platform/models"
 )
 
 // TestAgentIntegration 测试Agent的基本功能
@@ -101,7 +99,7 @@ func TestAgentIntegration(t *testing.T) {
 // Mock implementations for testing
 type mockAPIClient struct{}
 
-func (m *mockAPIClient) Register(ctx context.Context, agent interface{}) error {
+func (m *mockAPIClient) Register(ctx context.Context, agent *models.Agent) error {
 	return nil
 }
 
@@ -109,23 +107,23 @@ func (m *mockAPIClient) SendHeartbeat(ctx context.Context, agentID string) error
 	return nil
 }
 
-func (m *mockAPIClient) ReportStatus(ctx context.Context, agent interface{}) error {
+func (m *mockAPIClient) ReportStatus(ctx context.Context, agent *models.Agent) error {
 	return nil
 }
 
-func (m *mockAPIClient) GetConfig(ctx context.Context, configID string) (interface{}, error) {
+func (m *mockAPIClient) GetConfig(ctx context.Context, configID string) (*models.Config, error) {
 	return nil, nil
 }
 
-func (m *mockAPIClient) ReportConfigApplied(ctx context.Context, agentID string, applied interface{}) error {
+func (m *mockAPIClient) ReportConfigApplied(ctx context.Context, agentID string, applied *models.AppliedConfig) error {
 	return nil
 }
 
-func (m *mockAPIClient) ConnectWebSocket(ctx context.Context, agentID string, handler interface{}) error {
+func (m *mockAPIClient) ConnectWebSocket(ctx context.Context, agentID string, handler core.MessageHandler) error {
 	return nil
 }
 
-func (m *mockAPIClient) ReportMetrics(ctx context.Context, agentID string, metrics interface{}) error {
+func (m *mockAPIClient) ReportMetrics(ctx context.Context, agentID string, metrics *core.AgentMetrics) error {
 	return nil
 }
 
@@ -135,11 +133,11 @@ func (m *mockAPIClient) Close() error {
 
 type mockConfigManager struct{}
 
-func (m *mockConfigManager) SaveConfig(config interface{}) error {
+func (m *mockConfigManager) SaveConfig(config *models.Config) error {
 	return nil
 }
 
-func (m *mockConfigManager) LoadConfig(configID string) (interface{}, error) {
+func (m *mockConfigManager) LoadConfig(configID string) (*models.Config, error) {
 	return nil, nil
 }
 
@@ -147,7 +145,7 @@ func (m *mockConfigManager) DeleteConfig(configID string) error {
 	return nil
 }
 
-func (m *mockConfigManager) ListConfigs() ([]interface{}, error) {
+func (m *mockConfigManager) ListConfigs() ([]*models.Config, error) {
 	return nil, nil
 }
 
@@ -189,8 +187,8 @@ func (m *mockLogstashController) IsRunning() bool {
 	return m.running
 }
 
-func (m *mockLogstashController) GetStatus() (interface{}, error) {
-	return &logstash.LogstashStatus{
+func (m *mockLogstashController) GetStatus() (*core.LogstashStatus, error) {
+	return &core.LogstashStatus{
 		Running: m.running,
 		Version: "8.0.0",
 	}, nil
@@ -222,7 +220,7 @@ func (m *mockMetricsCollector) Stop() error {
 	return nil
 }
 
-func (m *mockMetricsCollector) GetMetrics() (interface{}, error) {
+func (m *mockMetricsCollector) GetMetrics() (*core.AgentMetrics, error) {
 	return &core.AgentMetrics{
 		CPUUsage:    50.0,
 		MemoryUsage: 60.0,
