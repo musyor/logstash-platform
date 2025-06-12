@@ -351,6 +351,8 @@ func (c *WebSocketClient) buildWebSocketURL(agentID string) (string, error) {
 		u.Scheme = "ws"
 	case "https":
 		u.Scheme = "wss"
+	case "ws", "wss":
+		// 已经是WebSocket协议，保持不变
 	default:
 		return "", fmt.Errorf("不支持的协议: %s", u.Scheme)
 	}

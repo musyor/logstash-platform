@@ -28,6 +28,10 @@ type HTTPClient struct {
 
 // NewHTTPClient 创建HTTP客户端
 func NewHTTPClient(cfg *config.AgentConfig, logger *logrus.Logger) (*HTTPClient, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("配置不能为空")
+	}
+	
 	// 解析基础URL
 	baseURL, err := url.Parse(cfg.ServerURL)
 	if err != nil {
@@ -124,6 +128,10 @@ func (c *HTTPClient) SendHeartbeat(ctx context.Context, agentID string) error {
 
 // ReportStatus 上报状态
 func (c *HTTPClient) ReportStatus(ctx context.Context, agent *models.Agent) error {
+	if agent == nil {
+		return fmt.Errorf("agent信息不能为空")
+	}
+	
 	c.logger.Debug("上报状态")
 	
 	// 发送PUT请求
@@ -145,6 +153,10 @@ func (c *HTTPClient) ReportStatus(ctx context.Context, agent *models.Agent) erro
 
 // GetConfig 获取配置
 func (c *HTTPClient) GetConfig(ctx context.Context, configID string) (*models.Config, error) {
+	if configID == "" {
+		return nil, fmt.Errorf("配置ID不能为空")
+	}
+	
 	c.logger.WithField("config_id", configID).Debug("获取配置")
 	
 	// 发送GET请求
@@ -172,6 +184,10 @@ func (c *HTTPClient) GetConfig(ctx context.Context, configID string) (*models.Co
 
 // ReportConfigApplied 上报配置应用结果
 func (c *HTTPClient) ReportConfigApplied(ctx context.Context, agentID string, applied *models.AppliedConfig) error {
+	if applied == nil {
+		return fmt.Errorf("应用配置信息不能为空")
+	}
+	
 	c.logger.WithField("config_id", applied.ConfigID).Debug("上报配置应用结果")
 	
 	// 构建请求
@@ -183,7 +199,7 @@ func (c *HTTPClient) ReportConfigApplied(ctx context.Context, agentID string, ap
 	}
 	
 	// 发送POST请求
-	path := fmt.Sprintf("/api/v1/agents/%s/configs", agentID)
+	path := fmt.Sprintf("/api/v1/agents/%s/configs/applied", agentID)
 	resp, err := c.doRequest(ctx, "POST", path, req)
 	if err != nil {
 		return err
@@ -203,9 +219,14 @@ func (c *HTTPClient) ReportConfigApplied(ctx context.Context, agentID string, ap
 func (c *HTTPClient) ReportMetrics(ctx context.Context, agentID string, metrics interface{}) error {
 	c.logger.Debug("上报指标")
 	
+	// 构建请求体
+	req := map[string]interface{}{
+		"metrics": metrics,
+	}
+	
 	// 发送POST请求
 	path := fmt.Sprintf("/api/v1/agents/%s/metrics", agentID)
-	resp, err := c.doRequest(ctx, "POST", path, metrics)
+	resp, err := c.doRequest(ctx, "POST", path, req)
 	if err != nil {
 		return err
 	}
@@ -245,6 +266,7 @@ func (c *HTTPClient) doRequest(ctx context.Context, method, path string, body in
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", fmt.Sprintf("LogstashAgent/%s", c.config.AgentID))
+	req.Header.Set("X-Agent-ID", c.config.AgentID)
 	
 	// 设置认证
 	if c.config.Token != "" {

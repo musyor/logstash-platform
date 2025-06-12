@@ -3,7 +3,7 @@
 <html>
 	<head>
 		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-		<title>core: Go Coverage Report</title>
+		<title>config: Go Coverage Report</title>
 		<style>
 			body {
 				background: black;
@@ -55,1082 +55,708 @@
 			<div id="nav">
 				<select id="files">
 				
-				<option value="file0">logstash-platform/internal/agent/core/agent.go (70.0%)</option>
+				<option value="file0">logstash-platform/internal/agent/config/config.go (79.5%)</option>
 				
-				<option value="file1">logstash-platform/internal/agent/logstash/controller.go (8.2%)</option>
+				<option value="file1">logstash-platform/internal/agent/config/manager.go (76.1%)</option>
 				
 				</select>
 			</div>
 			<div id="legend">
 				<span>not tracked</span>
 			
-				<span class="cov0">not covered</span>
-				<span class="cov8">covered</span>
+				<span class="cov0">no coverage</span>
+				<span class="cov1">low coverage</span>
+				<span class="cov2">*</span>
+				<span class="cov3">*</span>
+				<span class="cov4">*</span>
+				<span class="cov5">*</span>
+				<span class="cov6">*</span>
+				<span class="cov7">*</span>
+				<span class="cov8">*</span>
+				<span class="cov9">*</span>
+				<span class="cov10">high coverage</span>
 			
 			</div>
 		</div>
 		<div id="content">
 		
-		<pre class="file" id="file0" style="display: none">package core
+		<pre class="file" id="file0" style="display: none">package config
 
 import (
-        "context"
+        "fmt"
+        "io/ioutil"
+        "os"
+        "path/filepath"
+        "time"
+
+        "gopkg.in/yaml.v3"
+)
+
+// AgentConfig Agent配置
+type AgentConfig struct {
+        // 基础配置
+        AgentID      string `yaml:"agent_id"`       // Agent唯一标识
+        ServerURL    string `yaml:"server_url"`     // 管理平台地址
+        Token        string `yaml:"token"`          // 认证令牌
+        
+        // Logstash配置
+        LogstashPath    string `yaml:"logstash_path"`     // Logstash执行文件路径
+        ConfigDir       string `yaml:"config_dir"`        // 配置文件目录
+        DataDir         string `yaml:"data_dir"`          // 数据目录
+        LogDir          string `yaml:"log_dir"`           // 日志目录
+        PipelineWorkers int    `yaml:"pipeline_workers"`  // Pipeline工作线程数
+        BatchSize       int    `yaml:"batch_size"`        // 批处理大小
+        
+        // 通信配置
+        HeartbeatInterval   time.Duration `yaml:"heartbeat_interval"`    // 心跳间隔
+        MetricsInterval     time.Duration `yaml:"metrics_interval"`      // 指标上报间隔
+        ReconnectInterval   time.Duration `yaml:"reconnect_interval"`    // 重连间隔
+        RequestTimeout      time.Duration `yaml:"request_timeout"`       // 请求超时
+        MaxReconnectAttempts int          `yaml:"max_reconnect_attempts"` // 最大重连次数
+        
+        // WebSocket配置
+        EnableWebSocket     bool          `yaml:"enable_websocket"`      // 是否启用WebSocket
+        WebSocketPingInterval time.Duration `yaml:"websocket_ping_interval"` // WebSocket Ping间隔
+        
+        // 安全配置
+        TLSEnabled     bool   `yaml:"tls_enabled"`      // 是否启用TLS
+        TLSCertFile    string `yaml:"tls_cert_file"`    // TLS证书文件
+        TLSKeyFile     string `yaml:"tls_key_file"`     // TLS密钥文件
+        TLSCAFile      string `yaml:"tls_ca_file"`      // TLS CA文件
+        TLSSkipVerify  bool   `yaml:"tls_skip_verify"`  // 是否跳过证书验证
+        
+        // 高级配置
+        MaxConfigSize      int64  `yaml:"max_config_size"`       // 最大配置文件大小
+        ConfigBackupCount  int    `yaml:"config_backup_count"`   // 配置备份数量
+        EnableAutoReload   bool   `yaml:"enable_auto_reload"`    // 是否启用自动重载
+        ReloadDebounceTime time.Duration `yaml:"reload_debounce_time"` // 重载防抖时间
+}
+
+// DefaultConfig 返回默认配置
+func DefaultConfig() *AgentConfig <span class="cov5" title="8">{
+        return &amp;AgentConfig{
+                AgentID:      "",
+                ServerURL:    "http://localhost:8080",
+                Token:        "",
+                
+                LogstashPath:    "/usr/share/logstash/bin/logstash",
+                ConfigDir:       "/etc/logstash/conf.d",
+                DataDir:         "/var/lib/logstash",
+                LogDir:          "/var/log/logstash",
+                PipelineWorkers: 2,
+                BatchSize:       125,
+                
+                HeartbeatInterval:    30 * time.Second,
+                MetricsInterval:      60 * time.Second,
+                ReconnectInterval:    5 * time.Second,
+                RequestTimeout:       30 * time.Second,
+                MaxReconnectAttempts: 10,
+                
+                EnableWebSocket:       true,
+                WebSocketPingInterval: 30 * time.Second,
+                
+                TLSEnabled:     false,
+                TLSCertFile:    "",
+                TLSKeyFile:     "",
+                TLSCAFile:      "",
+                TLSSkipVerify:  false,
+                
+                MaxConfigSize:      10 * 1024 * 1024, // 10MB
+                ConfigBackupCount:  3,
+                EnableAutoReload:   true,
+                ReloadDebounceTime: 5 * time.Second,
+        }
+}</span>
+
+// LoadFromFile 从文件加载配置
+func LoadFromFile(filename string) (*AgentConfig, error) <span class="cov6" title="9">{
+        data, err := ioutil.ReadFile(filename)
+        if err != nil </span><span class="cov2" title="2">{
+                return nil, fmt.Errorf("读取配置文件失败: %w", err)
+        }</span>
+
+        // 先加载默认配置
+        <span class="cov5" title="7">cfg := DefaultConfig()
+        
+        // 解析YAML覆盖默认值
+        if err := yaml.Unmarshal(data, cfg); err != nil </span><span class="cov1" title="1">{
+                return nil, fmt.Errorf("解析配置文件失败: %w", err)
+        }</span>
+
+        <span class="cov5" title="6">return cfg, nil</span>
+}
+
+// SaveToFile 保存配置到文件
+func (c *AgentConfig) SaveToFile(filename string) error <span class="cov1" title="1">{
+        data, err := yaml.Marshal(c)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("序列化配置失败: %w", err)
+        }</span>
+
+        <span class="cov1" title="1">if err := ioutil.WriteFile(filename, data, 0644); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("写入配置文件失败: %w", err)
+        }</span>
+
+        <span class="cov1" title="1">return nil</span>
+}
+
+// Validate 验证配置
+func (c *AgentConfig) Validate() error <span class="cov5" title="8">{
+        if c.ServerURL == "" </span><span class="cov1" title="1">{
+                return fmt.Errorf("server_url 不能为空")
+        }</span>
+
+        <span class="cov5" title="7">if c.LogstashPath == "" </span><span class="cov1" title="1">{
+                return fmt.Errorf("logstash_path 不能为空")
+        }</span>
+
+        // 检查Logstash路径是否存在
+        <span class="cov5" title="6">if _, err := os.Stat(c.LogstashPath); err != nil </span><span class="cov1" title="1">{
+                return fmt.Errorf("logstash_path 无效: %w", err)
+        }</span>
+
+        <span class="cov4" title="5">if c.ConfigDir == "" </span><span class="cov0" title="0">{
+                return fmt.Errorf("config_dir 不能为空")
+        }</span>
+
+        // 创建必要的目录
+        <span class="cov4" title="5">dirs := []string{c.ConfigDir, c.DataDir, c.LogDir}
+        for _, dir := range dirs </span><span class="cov7" title="15">{
+                if dir != "" </span><span class="cov5" title="7">{
+                        if err := os.MkdirAll(dir, 0755); err != nil </span><span class="cov0" title="0">{
+                                return fmt.Errorf("创建目录 %s 失败: %w", dir, err)
+                        }</span>
+                }
+        }
+
+        // 验证时间间隔
+        <span class="cov4" title="5">if c.HeartbeatInterval &lt; 10*time.Second </span><span class="cov1" title="1">{
+                return fmt.Errorf("heartbeat_interval 不能小于10秒")
+        }</span>
+
+        <span class="cov4" title="4">if c.MetricsInterval &lt; 30*time.Second </span><span class="cov1" title="1">{
+                return fmt.Errorf("metrics_interval 不能小于30秒")
+        }</span>
+
+        // 验证TLS配置
+        <span class="cov3" title="3">if c.TLSEnabled </span><span class="cov2" title="2">{
+                if c.TLSCertFile == "" || c.TLSKeyFile == "" </span><span class="cov1" title="1">{
+                        return fmt.Errorf("启用TLS时必须提供证书和密钥文件")
+                }</span>
+                
+                // 检查证书文件是否存在
+                <span class="cov1" title="1">if _, err := os.Stat(c.TLSCertFile); err != nil </span><span class="cov1" title="1">{
+                        return fmt.Errorf("TLS证书文件不存在: %w", err)
+                }</span>
+                
+                <span class="cov0" title="0">if _, err := os.Stat(c.TLSKeyFile); err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("TLS密钥文件不存在: %w", err)
+                }</span>
+                
+                <span class="cov0" title="0">if c.TLSCAFile != "" </span><span class="cov0" title="0">{
+                        if _, err := os.Stat(c.TLSCAFile); err != nil </span><span class="cov0" title="0">{
+                                return fmt.Errorf("TLS CA文件不存在: %w", err)
+                        }</span>
+                }
+        }
+
+        <span class="cov1" title="1">return nil</span>
+}
+
+// GetLogstashConfigPath 获取Logstash配置文件完整路径
+func (c *AgentConfig) GetLogstashConfigPath(configID string) string <span class="cov10" title="44">{
+        return fmt.Sprintf("%s/%s.conf", c.ConfigDir, configID)
+}</span>
+
+// GetConfigBackupPath 获取配置备份路径
+func (c *AgentConfig) GetConfigBackupPath(configID string, version int) string <span class="cov6" title="9">{
+        return filepath.Join(c.ConfigDir, ".backup", fmt.Sprintf("%s.conf.backup.%d", configID, version))
+}</pre>
+		
+		<pre class="file" id="file1" style="display: none">package config
+
+import (
         "encoding/json"
         "fmt"
-        "net"
+        "io/ioutil"
         "os"
+        "path/filepath"
+        "strconv"
+        "strings"
         "sync"
         "time"
 
         "github.com/sirupsen/logrus"
-        "logstash-platform/internal/agent/config"
         "logstash-platform/internal/platform/models"
 )
 
-// Agent 实现AgentCore接口
-type Agent struct {
-        config      *config.AgentConfig
-        logger      *logrus.Logger
+// Manager 配置管理器实现
+type Manager struct {
+        config     *AgentConfig
+        logger     *logrus.Logger
         
-        // 核心组件
-        apiClient    APIClient
-        configMgr    ConfigManager
-        logstashCtrl LogstashController
-        heartbeat    HeartbeatService
-        metrics      MetricsCollector
+        // 配置缓存
+        configs    map[string]*models.Config
+        configsMux sync.RWMutex
         
-        // 状态信息
-        status       *models.Agent
-        statusMutex  sync.RWMutex
-        
-        // 生命周期管理
-        ctx          context.Context
-        cancel       context.CancelFunc
-        wg           sync.WaitGroup
-        
-        // WebSocket消息通道
-        msgChan      chan *WebSocketMessage
-        
-        // 启动时间
-        startTime    time.Time
+        // 元数据文件路径
+        metadataFile string
 }
 
-// NewAgent 创建新的Agent实例
-func NewAgent(cfg *config.AgentConfig, logger *logrus.Logger) (*Agent, error) <span class="cov8" title="1">{
-        // 获取本机IP
-        ip, err := getLocalIP()
-        if err != nil </span><span class="cov0" title="0">{
-                logger.WithError(err).Warn("获取本机IP失败，使用127.0.0.1")
-                ip = "127.0.0.1"
+// ConfigMetadata 配置元数据
+type ConfigMetadata struct {
+        ConfigID    string    `json:"config_id"`
+        Version     int       `json:"version"`
+        FilePath    string    `json:"file_path"`
+        BackupPaths []string  `json:"backup_paths"`
+        AppliedAt   time.Time `json:"applied_at"`
+        Hash        string    `json:"hash"`
+}
+
+// NewManager 创建配置管理器
+func NewManager(cfg *AgentConfig, logger *logrus.Logger) (*Manager, error) <span class="cov7" title="13">{
+        // 确保配置目录存在
+        if err := os.MkdirAll(cfg.ConfigDir, 0755); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("创建配置目录失败: %w", err)
         }</span>
         
-        // 获取主机名
-        <span class="cov8" title="1">hostname, err := getHostname()
-        if err != nil </span><span class="cov0" title="0">{
-                logger.WithError(err).Warn("获取主机名失败")
-                hostname = "unknown"
+        // 创建必要的子目录
+        <span class="cov7" title="13">metadataDir := filepath.Join(cfg.ConfigDir, ".metadata")
+        if err := os.MkdirAll(metadataDir, 0755); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("创建元数据目录失败: %w", err)
         }</span>
         
-        // 初始化Agent状态
-        <span class="cov8" title="1">agent := &amp;Agent{
-                config:    cfg,
-                logger:    logger,
-                msgChan:   make(chan *WebSocketMessage, 100),
-                startTime: time.Now(),
-                status: &amp;models.Agent{
-                        AgentID:         cfg.AgentID,
-                        Hostname:        hostname,
-                        IP:              ip,
-                        LogstashVersion: "unknown", // 将在启动时获取
-                        Status:          "offline",
-                        LastHeartbeat:   time.Now(),
-                        AppliedConfigs:  []models.AppliedConfig{},
-                },
+        <span class="cov7" title="13">backupDir := filepath.Join(cfg.ConfigDir, ".backup")
+        if err := os.MkdirAll(backupDir, 0755); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("创建备份目录失败: %w", err)
+        }</span>
+        
+        <span class="cov7" title="13">manager := &amp;Manager{
+                config:       cfg,
+                logger:       logger,
+                configs:      make(map[string]*models.Config),
+                metadataFile: filepath.Join(cfg.ConfigDir, ".metadata.json"),
         }
         
-        return agent, nil</span>
+        // 加载现有配置元数据
+        if err := manager.loadMetadata(); err != nil </span><span class="cov0" title="0">{
+                logger.WithError(err).Warn("加载配置元数据失败")
+        }</span>
+        
+        <span class="cov7" title="13">return manager, nil</span>
 }
 
-// WithAPIClient 设置API客户端
-func (a *Agent) WithAPIClient(client APIClient) *Agent <span class="cov0" title="0">{
-        a.apiClient = client
-        return a
-}</span>
-
-// WithConfigManager 设置配置管理器
-func (a *Agent) WithConfigManager(mgr ConfigManager) *Agent <span class="cov0" title="0">{
-        a.configMgr = mgr
-        return a
-}</span>
-
-// WithLogstashController 设置Logstash控制器
-func (a *Agent) WithLogstashController(ctrl LogstashController) *Agent <span class="cov0" title="0">{
-        a.logstashCtrl = ctrl
-        return a
-}</span>
-
-// WithHeartbeatService 设置心跳服务
-func (a *Agent) WithHeartbeatService(service HeartbeatService) *Agent <span class="cov0" title="0">{
-        a.heartbeat = service
-        return a
-}</span>
-
-// WithMetricsCollector 设置指标收集器
-func (a *Agent) WithMetricsCollector(collector MetricsCollector) *Agent <span class="cov0" title="0">{
-        a.metrics = collector
-        return a
-}</span>
-
-// Start 启动Agent
-func (a *Agent) Start(ctx context.Context) error <span class="cov8" title="1">{
-        a.logger.Info("正在启动Agent...")
+// SaveConfig 保存配置到本地
+func (m *Manager) SaveConfig(config *models.Config) error <span class="cov8" title="27">{
+        m.logger.WithField("config_id", config.ID).Info("保存配置")
         
-        // 创建带取消的上下文
-        a.ctx, a.cancel = context.WithCancel(ctx)
+        // 获取配置文件路径
+        configPath := m.GetConfigPath(config.ID)
         
-        // 验证组件
-        if err := a.validateComponents(); err != nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("组件验证失败: %w", err)
-        }</span>
-        
-        // 注册到管理平台
-        <span class="cov8" title="1">if err := a.Register(a.ctx); err != nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("注册到管理平台失败: %w", err)
-        }</span>
-        
-        // 启动Logstash
-        <span class="cov8" title="1">if err := a.logstashCtrl.Start(a.ctx); err != nil </span><span class="cov0" title="0">{
-                a.logger.WithError(err).Error("启动Logstash失败")
-                // 不返回错误，允许Agent继续运行
-        }</span>
-        
-        // 获取Logstash版本
-        <span class="cov8" title="1">if status, err := a.logstashCtrl.GetStatus(); err == nil </span><span class="cov8" title="1">{
-                a.updateStatus(func(s *models.Agent) </span><span class="cov8" title="1">{
-                        s.LogstashVersion = status.Version
-                }</span>)
-        }
-        
-        // 启动心跳服务
-        <span class="cov8" title="1">if err := a.heartbeat.Start(a.ctx); err != nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("启动心跳服务失败: %w", err)
-        }</span>
-        
-        // 启动指标收集
-        <span class="cov8" title="1">if err := a.metrics.Start(a.ctx); err != nil </span><span class="cov0" title="0">{
-                a.logger.WithError(err).Error("启动指标收集失败")
-                // 不返回错误，指标收集是可选功能
-        }</span>
-        
-        // 启动WebSocket连接（如果启用）
-        <span class="cov8" title="1">if a.config.EnableWebSocket </span><span class="cov8" title="1">{
-                a.wg.Add(1)
-                go a.connectWebSocket()
-        }</span>
-        
-        // 启动消息处理
-        <span class="cov8" title="1">a.wg.Add(1)
-        go a.processMessages()
-        
-        // 更新状态为在线
-        a.updateStatus(func(s *models.Agent) </span><span class="cov8" title="1">{
-                s.Status = "online"
-                s.LastHeartbeat = time.Now()
-        }</span>)
-        
-        <span class="cov8" title="1">a.logger.Info("Agent启动成功")
-        return nil</span>
-}
-
-// Stop 停止Agent
-func (a *Agent) Stop(ctx context.Context) error <span class="cov8" title="1">{
-        a.logger.Info("正在停止Agent...")
-        
-        // 更新状态为离线
-        a.updateStatus(func(s *models.Agent) </span><span class="cov8" title="1">{
-                s.Status = "offline"
-        }</span>)
-        
-        // 发送最后的状态更新
-        <span class="cov8" title="1">if a.apiClient != nil </span><span class="cov8" title="1">{
-                if err := a.apiClient.ReportStatus(ctx, a.GetStatus()); err != nil </span><span class="cov0" title="0">{
-                        a.logger.WithError(err).Error("发送离线状态失败")
+        // 备份现有配置（如果存在）
+        if _, err := os.Stat(configPath); err == nil </span><span class="cov5" title="6">{
+                if err := m.BackupConfig(config.ID); err != nil </span><span class="cov0" title="0">{
+                        m.logger.WithError(err).Warn("备份配置失败")
                 }</span>
         }
         
-        // 取消上下文
-        <span class="cov8" title="1">if a.cancel != nil </span><span class="cov8" title="1">{
-                a.cancel()
+        // 确保目录存在
+        <span class="cov8" title="27">dir := filepath.Dir(configPath)
+        if err := os.MkdirAll(dir, 0755); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("创建配置目录失败: %w", err)
         }</span>
         
-        // 停止心跳服务
-        <span class="cov8" title="1">if a.heartbeat != nil </span><span class="cov8" title="1">{
-                if err := a.heartbeat.Stop(); err != nil </span><span class="cov0" title="0">{
-                        a.logger.WithError(err).Error("停止心跳服务失败")
-                }</span>
-        }
-        
-        // 停止指标收集
-        <span class="cov8" title="1">if a.metrics != nil </span><span class="cov8" title="1">{
-                if err := a.metrics.Stop(); err != nil </span><span class="cov0" title="0">{
-                        a.logger.WithError(err).Error("停止指标收集失败")
-                }</span>
-        }
-        
-        // 停止Logstash
-        <span class="cov8" title="1">if a.logstashCtrl != nil </span><span class="cov8" title="1">{
-                if err := a.logstashCtrl.Stop(ctx); err != nil </span><span class="cov0" title="0">{
-                        a.logger.WithError(err).Error("停止Logstash失败")
-                }</span>
-        }
-        
-        // 关闭API客户端
-        <span class="cov8" title="1">if a.apiClient != nil </span><span class="cov8" title="1">{
-                if err := a.apiClient.Close(); err != nil </span><span class="cov0" title="0">{
-                        a.logger.WithError(err).Error("关闭API客户端失败")
-                }</span>
-        }
-        
-        // 关闭消息通道
-        <span class="cov8" title="1">close(a.msgChan)
-        
-        // 等待所有goroutine结束
-        done := make(chan struct{})
-        go func() </span><span class="cov8" title="1">{
-                a.wg.Wait()
-                close(done)
-        }</span>()
-        
-        <span class="cov8" title="1">select </span>{
-        case &lt;-done:<span class="cov8" title="1">
-                a.logger.Info("Agent已停止")
-                return nil</span>
-        case &lt;-ctx.Done():<span class="cov0" title="0">
-                a.logger.Warn("停止Agent超时")
-                return ctx.Err()</span>
-        }
-}
-
-// Register 注册到管理平台
-func (a *Agent) Register(ctx context.Context) error <span class="cov8" title="1">{
-        a.logger.Info("正在注册到管理平台...")
-        
-        // 发送注册请求
-        if err := a.apiClient.Register(ctx, a.GetStatus()); err != nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("注册请求失败: %w", err)
+        // 写入配置文件
+        <span class="cov8" title="27">if err := ioutil.WriteFile(configPath, []byte(config.Content), 0644); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("写入配置文件失败: %w", err)
         }</span>
         
-        <span class="cov8" title="1">a.logger.WithField("agent_id", a.config.AgentID).Info("注册成功")
-        return nil</span>
-}
-
-// GetStatus 获取Agent状态
-func (a *Agent) GetStatus() *models.Agent <span class="cov8" title="1">{
-        a.statusMutex.RLock()
-        defer a.statusMutex.RUnlock()
+        // 更新缓存
+        <span class="cov8" title="27">m.configsMux.Lock()
+        m.configs[config.ID] = config
+        m.configsMux.Unlock()
         
-        // 创建状态副本
-        status := *a.status
+        // 保存元数据
+        // 先尝试加载现有元数据以保留备份路径
+        existingMetadata, _ := m.loadConfigMetadata(config.ID)
         
-        // 复制切片
-        status.AppliedConfigs = make([]models.AppliedConfig, len(a.status.AppliedConfigs))
-        copy(status.AppliedConfigs, a.status.AppliedConfigs)
-        
-        return &amp;status
-}</span>
-
-// validateComponents 验证组件
-func (a *Agent) validateComponents() error <span class="cov8" title="1">{
-        if a.apiClient == nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("API客户端未设置")
-        }</span>
-        <span class="cov8" title="1">if a.configMgr == nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("配置管理器未设置")
-        }</span>
-        <span class="cov8" title="1">if a.logstashCtrl == nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("Logstash控制器未设置")
-        }</span>
-        <span class="cov8" title="1">if a.heartbeat == nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("心跳服务未设置")
-        }</span>
-        <span class="cov8" title="1">if a.metrics == nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("指标收集器未设置")
-        }</span>
-        <span class="cov8" title="1">return nil</span>
-}
-
-// connectWebSocket 连接WebSocket
-func (a *Agent) connectWebSocket() <span class="cov8" title="1">{
-        defer a.wg.Done()
-        
-        retryCount := 0
-        for </span><span class="cov8" title="1">{
-                select </span>{
-                case &lt;-a.ctx.Done():<span class="cov8" title="1">
-                        return</span>
-                default:<span class="cov8" title="1"></span>
-                }
-                
-                <span class="cov8" title="1">a.logger.Info("正在连接WebSocket...")
-                
-                // 连接WebSocket
-                err := a.apiClient.ConnectWebSocket(a.ctx, a.config.AgentID, a)
-                if err == nil </span><span class="cov0" title="0">{
-                        // 连接成功，重置重试计数
-                        retryCount = 0
-                        a.logger.Info("WebSocket连接成功")
-                        
-                        // 等待连接断开
-                        select </span>{
-                        case &lt;-a.ctx.Done():<span class="cov0" title="0">
-                                return</span>
-                        }
-                } else<span class="cov8" title="1"> {
-                        // 连接失败
-                        retryCount++
-                        a.logger.WithError(err).WithField("retry_count", retryCount).Error("WebSocket连接失败")
-                        
-                        // 检查是否超过最大重试次数
-                        if a.config.MaxReconnectAttempts &gt; 0 &amp;&amp; retryCount &gt;= a.config.MaxReconnectAttempts </span><span class="cov0" title="0">{
-                                a.logger.Error("WebSocket重连次数超过限制，停止重连")
-                                return
-                        }</span>
-                        
-                        // 等待一段时间后重试
-                        <span class="cov8" title="1">select </span>{
-                        case &lt;-time.After(a.config.ReconnectInterval):<span class="cov0" title="0"></span>
-                        case &lt;-a.ctx.Done():<span class="cov8" title="1">
-                                return</span>
-                        }
-                }
-        }
-}
-
-// processMessages 处理消息
-func (a *Agent) processMessages() <span class="cov8" title="1">{
-        defer a.wg.Done()
-        
-        for </span><span class="cov8" title="1">{
-                select </span>{
-                case msg, ok := &lt;-a.msgChan:<span class="cov8" title="1">
-                        if !ok </span><span class="cov0" title="0">{
-                                return
-                        }</span>
-                        
-                        <span class="cov8" title="1">if err := a.handleMessage(msg); err != nil </span><span class="cov0" title="0">{
-                                a.logger.WithError(err).WithField("msg_type", msg.Type).Error("处理消息失败")
-                        }</span>
-                        
-                case &lt;-a.ctx.Done():<span class="cov8" title="1">
-                        return</span>
-                }
-        }
-}
-
-// handleMessage 处理单个消息
-func (a *Agent) handleMessage(msg *WebSocketMessage) error <span class="cov8" title="1">{
-        a.logger.WithFields(logrus.Fields{
-                "type":      msg.Type,
-                "timestamp": msg.Timestamp,
-        }).Debug("处理消息")
-        
-        switch msg.Type </span>{
-        case MsgTypeConfigDeploy:<span class="cov0" title="0">
-                return a.handleConfigDeploy(msg.Payload)</span>
-        case MsgTypeConfigDelete:<span class="cov0" title="0">
-                return a.handleConfigDelete(msg.Payload)</span>
-        case MsgTypeReloadRequest:<span class="cov0" title="0">
-                return a.handleReloadRequest()</span>
-        case MsgTypeStatusRequest:<span class="cov8" title="1">
-                return a.handleStatusRequest()</span>
-        case MsgTypeMetricsRequest:<span class="cov0" title="0">
-                return a.handleMetricsRequest()</span>
-        default:<span class="cov0" title="0">
-                return fmt.Errorf("未知消息类型: %s", msg.Type)</span>
-        }
-}
-
-// HandleMessage 实现MessageHandler接口
-func (a *Agent) HandleMessage(msgType string, payload []byte) error <span class="cov8" title="1">{
-        msg := &amp;WebSocketMessage{
-                Type:      msgType,
-                Timestamp: time.Now(),
-                Payload:   json.RawMessage(payload),
-        }
-        
-        select </span>{
-        case a.msgChan &lt;- msg:<span class="cov8" title="1">
-                return nil</span>
-        case &lt;-time.After(5 * time.Second):<span class="cov0" title="0">
-                return fmt.Errorf("消息队列已满")</span>
-        }
-}
-
-// OnConnect 实现MessageHandler接口
-func (a *Agent) OnConnect() error <span class="cov8" title="1">{
-        a.logger.Info("WebSocket连接建立")
-        
-        // 更新状态
-        a.updateStatus(func(s *models.Agent) </span><span class="cov8" title="1">{
-                s.Status = "online"
-                s.LastHeartbeat = time.Now()
-        }</span>)
-        
-        // 发送初始状态
-        <span class="cov8" title="1">return a.handleStatusRequest()</span>
-}
-
-// OnDisconnect 实现MessageHandler接口
-func (a *Agent) OnDisconnect(err error) <span class="cov8" title="1">{
-        if err != nil </span><span class="cov8" title="1">{
-                a.logger.WithError(err).Warn("WebSocket连接断开")
-        }</span> else<span class="cov8" title="1"> {
-                a.logger.Info("WebSocket连接正常关闭")
-        }</span>
-}
-
-// 消息处理方法
-func (a *Agent) handleConfigDeploy(payload json.RawMessage) error <span class="cov8" title="1">{
-        // 解析配置部署请求
-        var req struct {
-                ConfigID string `json:"config_id"`
-                Version  int    `json:"version"`
-        }
-        
-        if err := json.Unmarshal(payload, &amp;req); err != nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("解析配置部署请求失败: %w", err)
-        }</span>
-        
-        <span class="cov8" title="1">a.logger.WithFields(logrus.Fields{
-                "config_id": req.ConfigID,
-                "version":   req.Version,
-        }).Info("收到配置部署请求")
-        
-        // 获取配置内容
-        config, err := a.apiClient.GetConfig(a.ctx, req.ConfigID)
-        if err != nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("获取配置失败: %w", err)
-        }</span>
-        
-        // 保存配置
-        <span class="cov8" title="1">if err := a.configMgr.SaveConfig(config); err != nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("保存配置失败: %w", err)
-        }</span>
-        
-        // 重载Logstash
-        <span class="cov8" title="1">if a.config.EnableAutoReload &amp;&amp; a.logstashCtrl.IsRunning() </span><span class="cov8" title="1">{
-                if err := a.logstashCtrl.Reload(a.ctx); err != nil </span><span class="cov0" title="0">{
-                        a.logger.WithError(err).Error("重载Logstash失败")
-                        // 不返回错误，允许继续
-                }</span>
-        }
-        
-        // 更新已应用配置
-        <span class="cov8" title="1">applied := models.AppliedConfig{
-                ConfigID:  req.ConfigID,
-                Version:   req.Version,
+        metadata := &amp;ConfigMetadata{
+                ConfigID:  config.ID,
+                Version:   config.Version,
+                FilePath:  configPath,
                 AppliedAt: time.Now(),
+                Hash:      m.calculateHash(config.Content),
         }
         
-        a.updateStatus(func(s *models.Agent) </span><span class="cov8" title="1">{
-                // 检查是否已存在
-                found := false
-                for i, ac := range s.AppliedConfigs </span><span class="cov0" title="0">{
-                        if ac.ConfigID == req.ConfigID </span><span class="cov0" title="0">{
-                                s.AppliedConfigs[i] = applied
-                                found = true
-                                break</span>
-                        }
-                }
-                <span class="cov8" title="1">if !found </span><span class="cov8" title="1">{
-                        s.AppliedConfigs = append(s.AppliedConfigs, applied)
-                }</span>
-        })
-        
-        // 上报配置应用结果
-        <span class="cov8" title="1">return a.apiClient.ReportConfigApplied(a.ctx, a.config.AgentID, &amp;applied)</span>
-}
-
-func (a *Agent) handleConfigDelete(payload json.RawMessage) error <span class="cov8" title="1">{
-        // 解析配置删除请求
-        var req struct {
-                ConfigID string `json:"config_id"`
-        }
-        
-        if err := json.Unmarshal(payload, &amp;req); err != nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("解析配置删除请求失败: %w", err)
+        // 保留现有的备份路径
+        if existingMetadata != nil </span><span class="cov5" title="6">{
+                metadata.BackupPaths = existingMetadata.BackupPaths
         }</span>
         
-        <span class="cov8" title="1">a.logger.WithField("config_id", req.ConfigID).Info("收到配置删除请求")
-        
-        // 删除配置
-        if err := a.configMgr.DeleteConfig(req.ConfigID); err != nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("删除配置失败: %w", err)
+        <span class="cov8" title="27">if err := m.saveConfigMetadata(config.ID, metadata); err != nil </span><span class="cov0" title="0">{
+                m.logger.WithError(err).Warn("保存配置元数据失败")
         }</span>
         
-        // 更新状态
-        <span class="cov8" title="1">a.updateStatus(func(s *models.Agent) </span><span class="cov8" title="1">{
-                // 从已应用配置中移除
-                newConfigs := make([]models.AppliedConfig, 0, len(s.AppliedConfigs))
-                for _, ac := range s.AppliedConfigs </span><span class="cov8" title="1">{
-                        if ac.ConfigID != req.ConfigID </span><span class="cov0" title="0">{
-                                newConfigs = append(newConfigs, ac)
-                        }</span>
-                }
-                <span class="cov8" title="1">s.AppliedConfigs = newConfigs</span>
-        })
+        <span class="cov8" title="27">m.logger.WithFields(logrus.Fields{
+                "config_id": config.ID,
+                "version":   config.Version,
+                "path":      configPath,
+        }).Info("配置保存成功")
         
-        // 重载Logstash
-        <span class="cov8" title="1">if a.config.EnableAutoReload &amp;&amp; a.logstashCtrl.IsRunning() </span><span class="cov8" title="1">{
-                if err := a.logstashCtrl.Reload(a.ctx); err != nil </span><span class="cov0" title="0">{
-                        a.logger.WithError(err).Error("重载Logstash失败")
-                }</span>
-        }
-        
-        <span class="cov8" title="1">return nil</span>
-}
-
-func (a *Agent) handleReloadRequest() error <span class="cov8" title="1">{
-        a.logger.Info("收到重载请求")
-        
-        if !a.logstashCtrl.IsRunning() </span><span class="cov8" title="1">{
-                return fmt.Errorf("Logstash未运行")
-        }</span>
-        
-        // 执行重载
-        <span class="cov8" title="1">if err := a.logstashCtrl.Reload(a.ctx); err != nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("重载失败: %w", err)
-        }</span>
-        
-        <span class="cov8" title="1">a.logger.Info("Logstash重载成功")
         return nil</span>
 }
 
-func (a *Agent) handleStatusRequest() error <span class="cov8" title="1">{
-        a.logger.Debug("收到状态请求")
+// LoadConfig 加载本地配置
+func (m *Manager) LoadConfig(configID string) (*models.Config, error) <span class="cov8" title="26">{
+        // 先从缓存查找
+        m.configsMux.RLock()
+        if config, ok := m.configs[configID]; ok </span><span class="cov8" title="24">{
+                m.configsMux.RUnlock()
+                return config, nil
+        }</span>
+        <span class="cov2" title="2">m.configsMux.RUnlock()
         
-        // 获取当前状态
-        status := a.GetStatus()
-        
-        // 直接上报状态
-        if err := a.apiClient.ReportStatus(a.ctx, status); err != nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("上报状态失败: %w", err)
+        // 从文件加载
+        configPath := m.GetConfigPath(configID)
+        content, err := ioutil.ReadFile(configPath)
+        if err != nil </span><span class="cov1" title="1">{
+                return nil, fmt.Errorf("读取配置文件失败: %w", err)
         }</span>
         
-        <span class="cov8" title="1">return nil</span>
-}
-
-func (a *Agent) handleMetricsRequest() error <span class="cov8" title="1">{
-        a.logger.Debug("收到指标请求")
-        
-        // 获取当前指标
-        metrics, err := a.metrics.GetMetrics()
+        // 加载元数据
+        <span class="cov1" title="1">metadata, err := m.loadConfigMetadata(configID)
         if err != nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("获取指标失败: %w", err)
+                m.logger.WithError(err).Warn("加载配置元数据失败")
+                // 创建基本配置
+                return &amp;models.Config{
+                        ID:      configID,
+                        Content: string(content),
+                }, nil
         }</span>
         
-        // 上报指标
-        <span class="cov8" title="1">if err := a.apiClient.ReportMetrics(a.ctx, a.config.AgentID, metrics); err != nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("上报指标失败: %w", err)
-        }</span>
+        // 创建配置对象
+        <span class="cov1" title="1">config := &amp;models.Config{
+                ID:      configID,
+                Version: metadata.Version,
+                Content: string(content),
+        }
         
-        <span class="cov8" title="1">return nil</span>
+        // 更新缓存
+        m.configsMux.Lock()
+        m.configs[configID] = config
+        m.configsMux.Unlock()
+        
+        return config, nil</span>
 }
 
-// updateStatus 更新Agent状态
-func (a *Agent) updateStatus(updater func(*models.Agent)) <span class="cov8" title="1">{
-        a.statusMutex.Lock()
-        defer a.statusMutex.Unlock()
-        updater(a.status)
+// DeleteConfig 删除本地配置
+func (m *Manager) DeleteConfig(configID string) error <span class="cov2" title="2">{
+        m.logger.WithField("config_id", configID).Info("删除配置")
+        
+        // 获取配置文件路径
+        configPath := m.GetConfigPath(configID)
+        
+        // 备份配置
+        if err := m.BackupConfig(configID); err != nil </span><span class="cov0" title="0">{
+                m.logger.WithError(err).Warn("备份配置失败")
+        }</span>
+        
+        // 删除配置文件
+        <span class="cov2" title="2">if err := os.Remove(configPath); err != nil &amp;&amp; !os.IsNotExist(err) </span><span class="cov0" title="0">{
+                return fmt.Errorf("删除配置文件失败: %w", err)
+        }</span>
+        
+        // 从缓存删除
+        <span class="cov2" title="2">m.configsMux.Lock()
+        delete(m.configs, configID)
+        m.configsMux.Unlock()
+        
+        // 删除元数据
+        if err := m.deleteConfigMetadata(configID); err != nil </span><span class="cov0" title="0">{
+                m.logger.WithError(err).Warn("删除配置元数据失败")
+        }</span>
+        
+        <span class="cov2" title="2">return nil</span>
+}
+
+// ListConfigs 列出所有本地配置
+func (m *Manager) ListConfigs() ([]*models.Config, error) <span class="cov2" title="2">{
+        // 从元数据目录读取所有配置
+        metadataDir := filepath.Join(m.config.ConfigDir, ".metadata")
+        files, err := ioutil.ReadDir(metadataDir)
+        if err != nil </span><span class="cov0" title="0">{
+                if os.IsNotExist(err) </span><span class="cov0" title="0">{
+                        return []*models.Config{}, nil
+                }</span>
+                <span class="cov0" title="0">return nil, fmt.Errorf("读取元数据目录失败: %w", err)</span>
+        }
+        
+        <span class="cov2" title="2">var configs []*models.Config
+        for _, file := range files </span><span class="cov7" title="13">{
+                // 跳过非JSON文件
+                if file.IsDir() || !strings.HasSuffix(file.Name(), ".json") </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+                
+                // 从文件名提取配置ID
+                <span class="cov7" title="13">configID := strings.TrimSuffix(file.Name(), ".json")
+                
+                // 加载配置
+                config, err := m.LoadConfig(configID)
+                if err != nil </span><span class="cov0" title="0">{
+                        m.logger.WithError(err).WithField("config_id", configID).Warn("加载配置失败")
+                        continue</span>
+                }
+                
+                <span class="cov7" title="13">configs = append(configs, config)</span>
+        }
+        
+        <span class="cov2" title="2">return configs, nil</span>
+}
+
+// GetConfigPath 获取配置文件路径
+func (m *Manager) GetConfigPath(configID string) string <span class="cov10" title="43">{
+        return m.config.GetLogstashConfigPath(configID)
 }</span>
 
-// 辅助函数
-
-// getLocalIP 获取本机IP
-func getLocalIP() (string, error) <span class="cov8" title="1">{
-        addrs, err := net.InterfaceAddrs()
-        if err != nil </span><span class="cov0" title="0">{
-                return "", err
+// BackupConfig 备份配置
+func (m *Manager) BackupConfig(configID string) error <span class="cov6" title="10">{
+        configPath := m.GetConfigPath(configID)
+        
+        // 检查配置文件是否存在
+        if _, err := os.Stat(configPath); os.IsNotExist(err) </span><span class="cov2" title="2">{
+                return nil // 配置不存在，无需备份
         }</span>
         
-        <span class="cov8" title="1">for _, addr := range addrs </span><span class="cov8" title="1">{
-                if ipnet, ok := addr.(*net.IPNet); ok &amp;&amp; !ipnet.IP.IsLoopback() </span><span class="cov8" title="1">{
-                        if ipnet.IP.To4() != nil </span><span class="cov8" title="1">{
-                                return ipnet.IP.String(), nil
+        // 读取当前配置
+        <span class="cov5" title="8">content, err := ioutil.ReadFile(configPath)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("读取配置文件失败: %w", err)
+        }</span>
+        
+        // 获取当前版本号
+        <span class="cov5" title="8">metadata, err := m.loadConfigMetadata(configID)
+        version := 1
+        if err == nil &amp;&amp; metadata != nil </span><span class="cov5" title="8">{
+                version = metadata.Version
+        }</span> else<span class="cov0" title="0"> {
+                // 如果元数据不存在，创建新的
+                metadata = &amp;ConfigMetadata{
+                        ConfigID:    configID,
+                        Version:     version,
+                        FilePath:    configPath,
+                        AppliedAt:   time.Now(),
+                        BackupPaths: []string{},
+                }
+        }</span>
+        
+        // 生成备份文件路径
+        <span class="cov5" title="8">backupPath := m.config.GetConfigBackupPath(configID, version)
+        
+        // 写入备份文件
+        if err := ioutil.WriteFile(backupPath, content, 0644); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("写入备份文件失败: %w", err)
+        }</span>
+        
+        // 更新元数据
+        <span class="cov5" title="8">metadata.BackupPaths = append(metadata.BackupPaths, backupPath)
+        // 限制备份数量
+        if len(metadata.BackupPaths) &gt; m.config.ConfigBackupCount </span><span class="cov1" title="1">{
+                // 删除最旧的备份
+                oldBackup := metadata.BackupPaths[0]
+                if err := os.Remove(oldBackup); err != nil </span><span class="cov0" title="0">{
+                        m.logger.WithError(err).Warn("删除旧备份失败")
+                }</span>
+                <span class="cov1" title="1">metadata.BackupPaths = metadata.BackupPaths[1:]</span>
+        }
+        <span class="cov5" title="8">m.saveConfigMetadata(configID, metadata)
+        
+        m.logger.WithFields(logrus.Fields{
+                "config_id": configID,
+                "backup":    backupPath,
+        }).Info("配置备份成功")
+        
+        return nil</span>
+}
+
+// RestoreConfig 恢复配置
+func (m *Manager) RestoreConfig(configID string) error <span class="cov2" title="2">{
+        // 加载元数据
+        metadata, err := m.loadConfigMetadata(configID)
+        if err != nil </span><span class="cov1" title="1">{
+                return fmt.Errorf("加载配置元数据失败: %w", err)
+        }</span>
+        
+        <span class="cov1" title="1">if len(metadata.BackupPaths) == 0 </span><span class="cov0" title="0">{
+                return fmt.Errorf("没有可用的备份")
+        }</span>
+        
+        // 获取最新的备份
+        <span class="cov1" title="1">backupPath := metadata.BackupPaths[len(metadata.BackupPaths)-1]
+        
+        // 读取备份内容
+        content, err := ioutil.ReadFile(backupPath)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("读取备份文件失败: %w", err)
+        }</span>
+        
+        // 恢复到原配置文件
+        <span class="cov1" title="1">configPath := m.GetConfigPath(configID)
+        if err := ioutil.WriteFile(configPath, content, 0644); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("恢复配置文件失败: %w", err)
+        }</span>
+        
+        // 从备份路径提取版本号
+        // 格式: xxx.conf.backup.{version}
+        <span class="cov1" title="1">parts := strings.Split(backupPath, ".")
+        if len(parts) &gt; 0 </span><span class="cov1" title="1">{
+                if versionStr := parts[len(parts)-1]; versionStr != "" </span><span class="cov1" title="1">{
+                        if version, err := strconv.Atoi(versionStr); err == nil </span><span class="cov1" title="1">{
+                                // 更新元数据中的版本号
+                                metadata.Version = version
+                                m.saveConfigMetadata(configID, metadata)
                         }</span>
                 }
         }
         
-        <span class="cov0" title="0">return "", fmt.Errorf("未找到有效的IP地址")</span>
+        // 清除缓存，强制重新加载
+        <span class="cov1" title="1">m.configsMux.Lock()
+        delete(m.configs, configID)
+        m.configsMux.Unlock()
+        
+        m.logger.WithFields(logrus.Fields{
+                "config_id": configID,
+                "backup":    backupPath,
+        }).Info("配置恢复成功")
+        
+        return nil</span>
 }
 
-// getHostname 获取主机名
-func getHostname() (string, error) <span class="cov8" title="1">{
-        hostname, err := os.Hostname()
-        if err != nil </span><span class="cov0" title="0">{
-                return "", err
-        }</span>
-        <span class="cov8" title="1">return hostname, nil</span>
-}</pre>
-		
-		<pre class="file" id="file1" style="display: none">package logstash
+// 辅助方法
 
-import (
-        "bufio"
-        "context"
-        "fmt"
-        "io"
-        "os"
-        "os/exec"
-        "path/filepath"
-        "strings"
-        "sync"
-        "syscall"
-        "time"
-
-        "github.com/sirupsen/logrus"
-        "logstash-platform/internal/agent/config"
-        "logstash-platform/internal/agent/core"
-)
-
-// Controller Logstash控制器实现
-type Controller struct {
-        config        *config.AgentConfig
-        logger        *logrus.Logger
-        
-        // 进程管理
-        cmd           *exec.Cmd
-        cmdMutex      sync.Mutex
-        
-        // 状态管理
-        status        *core.LogstashStatus
-        statusMutex   sync.RWMutex
-        
-        // 日志输出
-        logChan       chan string
-        errorChan     chan string
-        
-        // 控制通道
-        stopChan      chan struct{}
-        stoppedChan   chan struct{}
-}
-
-// NewController 创建Logstash控制器
-func NewController(cfg *config.AgentConfig, logger *logrus.Logger) core.LogstashController <span class="cov8" title="1">{
-        return &amp;Controller{
-                config:      cfg,
-                logger:      logger,
-                logChan:     make(chan string, 100),
-                errorChan:   make(chan string, 100),
-                stopChan:    make(chan struct{}),
-                stoppedChan: make(chan struct{}),
-                status: &amp;core.LogstashStatus{
-                        Running: false,
-                },
+// loadMetadata 加载所有配置元数据
+func (m *Manager) loadMetadata() error <span class="cov7" title="13">{
+        data, err := ioutil.ReadFile(m.metadataFile)
+        if err != nil </span><span class="cov7" title="13">{
+                if os.IsNotExist(err) </span><span class="cov7" title="13">{
+                        return nil
+                }</span>
+                <span class="cov0" title="0">return err</span>
         }
-}</span>
-
-// Start 启动Logstash
-func (c *Controller) Start(ctx context.Context) error <span class="cov0" title="0">{
-        c.cmdMutex.Lock()
-        defer c.cmdMutex.Unlock()
         
-        // 检查是否已经运行
-        if c.IsRunning() </span><span class="cov0" title="0">{
-                return fmt.Errorf("Logstash已经在运行")
-        }</span>
-        
-        <span class="cov0" title="0">c.logger.Info("正在启动Logstash...")
-        
-        // 构建命令行参数
-        args := c.buildArgs()
-        
-        // 创建命令
-        cmd := exec.CommandContext(ctx, c.config.LogstashPath, args...)
-        
-        // 设置环境变量
-        cmd.Env = append(os.Environ(),
-                fmt.Sprintf("LS_JAVA_OPTS=-Xmx1g -Xms1g"),
-                fmt.Sprintf("LOGSTASH_PATH_CONF=%s", c.config.ConfigDir),
-                fmt.Sprintf("LOGSTASH_PATH_DATA=%s", c.config.DataDir),
-                fmt.Sprintf("LOGSTASH_PATH_LOGS=%s", c.config.LogDir),
-        )
-        
-        // 设置工作目录
-        cmd.Dir = filepath.Dir(c.config.LogstashPath)
-        
-        // 获取输出管道
-        stdout, err := cmd.StdoutPipe()
-        if err != nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("创建stdout管道失败: %w", err)
-        }</span>
-        
-        <span class="cov0" title="0">stderr, err := cmd.StderrPipe()
-        if err != nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("创建stderr管道失败: %w", err)
-        }</span>
-        
-        // 启动进程
-        <span class="cov0" title="0">if err := cmd.Start(); err != nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("启动Logstash失败: %w", err)
-        }</span>
-        
-        <span class="cov0" title="0">c.cmd = cmd
-        
-        // 更新状态
-        c.updateStatus(func(s *core.LogstashStatus) </span><span class="cov0" title="0">{
-                s.Running = true
-                s.PID = cmd.Process.Pid
-                s.StartTime = time.Now()
-                s.ConfigPath = c.config.ConfigDir
-        }</span>)
-        
-        // 启动日志处理
-        <span class="cov0" title="0">go c.handleOutput(stdout, c.logChan)
-        go c.handleOutput(stderr, c.errorChan)
-        go c.processLogs()
-        
-        // 等待进程退出
-        go c.waitForExit()
-        
-        // 等待启动完成
-        if err := c.waitForStartup(ctx); err != nil </span><span class="cov0" title="0">{
-                c.Stop(context.Background())
+        <span class="cov0" title="0">var metadata map[string]*ConfigMetadata
+        if err := json.Unmarshal(data, &amp;metadata); err != nil </span><span class="cov0" title="0">{
                 return err
         }</span>
         
-        // 获取版本信息
-        <span class="cov0" title="0">c.detectVersion()
-        
-        c.logger.WithField("pid", cmd.Process.Pid).Info("Logstash启动成功")
-        return nil</span>
-}
-
-// Stop 停止Logstash
-func (c *Controller) Stop(ctx context.Context) error <span class="cov8" title="1">{
-        c.cmdMutex.Lock()
-        defer c.cmdMutex.Unlock()
-        
-        if c.cmd == nil || c.cmd.Process == nil </span><span class="cov8" title="1">{
-                return nil
-        }</span>
-        
-        <span class="cov0" title="0">c.logger.Info("正在停止Logstash...")
-        
-        // 发送停止信号
-        close(c.stopChan)
-        
-        // 发送SIGTERM信号
-        if err := c.cmd.Process.Signal(syscall.SIGTERM); err != nil </span><span class="cov0" title="0">{
-                c.logger.WithError(err).Warn("发送SIGTERM信号失败")
-        }</span>
-        
-        // 等待进程退出
-        <span class="cov0" title="0">done := make(chan error, 1)
-        go func() </span><span class="cov0" title="0">{
-                done &lt;- c.cmd.Wait()
-        }</span>()
-        
-        <span class="cov0" title="0">select </span>{
-        case &lt;-done:<span class="cov0" title="0">
-                c.logger.Info("Logstash已正常停止")</span>
-        case &lt;-ctx.Done():<span class="cov0" title="0">
-                // 超时，强制终止
-                c.logger.Warn("停止超时，强制终止Logstash")
-                if err := c.cmd.Process.Kill(); err != nil </span><span class="cov0" title="0">{
-                        return fmt.Errorf("强制终止失败: %w", err)
+        // 验证配置文件是否存在
+        <span class="cov0" title="0">for configID, meta := range metadata </span><span class="cov0" title="0">{
+                if _, err := os.Stat(meta.FilePath); os.IsNotExist(err) </span><span class="cov0" title="0">{
+                        m.logger.WithField("config_id", configID).Warn("配置文件不存在，删除元数据")
+                        delete(metadata, configID)
                 }</span>
         }
-        
-        // 更新状态
-        <span class="cov0" title="0">c.updateStatus(func(s *core.LogstashStatus) </span><span class="cov0" title="0">{
-                s.Running = false
-                s.PID = 0
-        }</span>)
-        
-        // 等待日志处理结束
-        <span class="cov0" title="0">select </span>{
-        case &lt;-c.stoppedChan:<span class="cov0" title="0"></span>
-        case &lt;-time.After(5 * time.Second):<span class="cov0" title="0"></span>
-        }
-        
-        <span class="cov0" title="0">c.cmd = nil
-        return nil</span>
-}
-
-// Restart 重启Logstash
-func (c *Controller) Restart(ctx context.Context) error <span class="cov0" title="0">{
-        c.logger.Info("正在重启Logstash...")
-        
-        // 停止
-        if err := c.Stop(ctx); err != nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("停止Logstash失败: %w", err)
-        }</span>
-        
-        // 等待一段时间
-        <span class="cov0" title="0">time.Sleep(2 * time.Second)
-        
-        // 启动
-        if err := c.Start(ctx); err != nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("启动Logstash失败: %w", err)
-        }</span>
         
         <span class="cov0" title="0">return nil</span>
 }
 
-// Reload 重新加载配置
-func (c *Controller) Reload(ctx context.Context) error <span class="cov8" title="1">{
-        if !c.IsRunning() </span><span class="cov8" title="1">{
-                return fmt.Errorf("Logstash未运行")
-        }</span>
+// saveConfigMetadata 保存单个配置的元数据
+func (m *Manager) saveConfigMetadata(configID string, metadata *ConfigMetadata) error <span class="cov9" title="36">{
+        // 保存到单独的元数据文件
+        metadataPath := filepath.Join(m.config.ConfigDir, ".metadata", configID+".json")
         
-        <span class="cov0" title="0">c.logger.Info("正在重载Logstash配置...")
-        
-        // 发送SIGHUP信号触发重载
-        c.cmdMutex.Lock()
-        cmd := c.cmd
-        c.cmdMutex.Unlock()
-        
-        if cmd == nil || cmd.Process == nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("进程不存在")
-        }</span>
-        
-        <span class="cov0" title="0">if err := cmd.Process.Signal(syscall.SIGHUP); err != nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("发送重载信号失败: %w", err)
-        }</span>
-        
-        // 更新状态
-        <span class="cov0" title="0">c.updateStatus(func(s *core.LogstashStatus) </span><span class="cov0" title="0">{
-                s.LastReloadTime = time.Now()
-        }</span>)
-        
-        <span class="cov0" title="0">c.logger.Info("配置重载信号已发送")
-        return nil</span>
-}
-
-// IsRunning 检查是否运行中
-func (c *Controller) IsRunning() bool <span class="cov8" title="1">{
-        c.statusMutex.RLock()
-        defer c.statusMutex.RUnlock()
-        return c.status.Running
-}</span>
-
-// GetStatus 获取Logstash状态
-func (c *Controller) GetStatus() (*core.LogstashStatus, error) <span class="cov8" title="1">{
-        c.statusMutex.RLock()
-        defer c.statusMutex.RUnlock()
-        
-        // 创建状态副本
-        status := *c.status
-        return &amp;status, nil
-}</span>
-
-// ValidateConfig 验证配置文件
-func (c *Controller) ValidateConfig(configPath string) error <span class="cov0" title="0">{
-        c.logger.WithField("path", configPath).Info("验证配置文件")
-        
-        // 构建验证命令
-        args := []string{
-                "--config.test_and_exit",
-                "--path.config", configPath,
-        }
-        
-        // 执行验证
-        cmd := exec.Command(c.config.LogstashPath, args...)
-        output, err := cmd.CombinedOutput()
-        
+        data, err := json.MarshalIndent(metadata, "", "  ")
         if err != nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("配置验证失败: %s\n%s", err, string(output))
+                return err
         }</span>
         
-        // 检查输出中是否包含错误
-        <span class="cov0" title="0">outputStr := string(output)
-        if strings.Contains(outputStr, "ERROR") || strings.Contains(outputStr, "error") </span><span class="cov0" title="0">{
-                return fmt.Errorf("配置包含错误:\n%s", outputStr)
+        // 同时保存到总的元数据文件（向后兼容）
+        <span class="cov9" title="36">allMetadata := make(map[string]*ConfigMetadata)
+        if data, err := ioutil.ReadFile(m.metadataFile); err == nil </span><span class="cov8" title="25">{
+                json.Unmarshal(data, &amp;allMetadata)
+        }</span>
+        <span class="cov9" title="36">allMetadata[configID] = metadata
+        
+        if allData, err := json.MarshalIndent(allMetadata, "", "  "); err == nil </span><span class="cov9" title="36">{
+                ioutil.WriteFile(m.metadataFile, allData, 0644)
         }</span>
         
-        <span class="cov0" title="0">c.logger.Info("配置验证通过")
-        return nil</span>
+        <span class="cov9" title="36">return ioutil.WriteFile(metadataPath, data, 0644)</span>
 }
 
-// 内部方法
-
-// buildArgs 构建命令行参数
-func (c *Controller) buildArgs() []string <span class="cov0" title="0">{
-        args := []string{
-                "--path.config", c.config.ConfigDir,
-                "--path.data", c.config.DataDir,
-                "--path.logs", c.config.LogDir,
-        }
-        
-        // 设置工作线程数
-        if c.config.PipelineWorkers &gt; 0 </span><span class="cov0" title="0">{
-                args = append(args, "--pipeline.workers", fmt.Sprintf("%d", c.config.PipelineWorkers))
-        }</span>
-        
-        // 设置批处理大小
-        <span class="cov0" title="0">if c.config.BatchSize &gt; 0 </span><span class="cov0" title="0">{
-                args = append(args, "--pipeline.batch.size", fmt.Sprintf("%d", c.config.BatchSize))
-        }</span>
-        
-        // 启用配置重载
-        <span class="cov0" title="0">if c.config.EnableAutoReload </span><span class="cov0" title="0">{
-                args = append(args, "--config.reload.automatic")
-                args = append(args, "--config.reload.interval", "3s")
-        }</span>
-        
-        <span class="cov0" title="0">return args</span>
-}
-
-// handleOutput 处理输出
-func (c *Controller) handleOutput(pipe io.ReadCloser, output chan&lt;- string) <span class="cov0" title="0">{
-        defer pipe.Close()
-        
-        scanner := bufio.NewScanner(pipe)
-        for scanner.Scan() </span><span class="cov0" title="0">{
-                select </span>{
-                case output &lt;- scanner.Text():<span class="cov0" title="0"></span>
-                        // 成功发送
-                case &lt;-c.stopChan:<span class="cov0" title="0">
-                        return</span>
-                }
-        }
-}
-
-// processLogs 处理日志
-func (c *Controller) processLogs() <span class="cov0" title="0">{
-        defer close(c.stoppedChan)
-        
-        for </span><span class="cov0" title="0">{
-                select </span>{
-                case line := &lt;-c.logChan:<span class="cov0" title="0">
-                        c.logger.WithField("source", "logstash").Debug(line)
-                        // 检测启动完成
-                        if strings.Contains(line, "Pipelines running") </span><span class="cov0" title="0">{
-                                c.logger.Info("Logstash管道已启动")
-                        }</span>
-                        
-                case line := &lt;-c.errorChan:<span class="cov0" title="0">
-                        c.logger.WithField("source", "logstash").Error(line)</span>
-                        
-                case &lt;-c.stopChan:<span class="cov0" title="0">
-                        // 清空剩余日志
-                        for len(c.logChan) &gt; 0 </span><span class="cov0" title="0">{
-                                &lt;-c.logChan
-                        }</span>
-                        <span class="cov0" title="0">for len(c.errorChan) &gt; 0 </span><span class="cov0" title="0">{
-                                &lt;-c.errorChan
-                        }</span>
-                        <span class="cov0" title="0">return</span>
-                }
-        }
-}
-
-// waitForExit 等待进程退出
-func (c *Controller) waitForExit() <span class="cov0" title="0">{
-        c.cmdMutex.Lock()
-        cmd := c.cmd
-        c.cmdMutex.Unlock()
-        
-        if cmd == nil </span><span class="cov0" title="0">{
-                return
-        }</span>
-        
-        // 等待进程退出
-        <span class="cov0" title="0">err := cmd.Wait()
-        
-        c.logger.WithError(err).Info("Logstash进程已退出")
-        
-        // 更新状态
-        c.updateStatus(func(s *core.LogstashStatus) </span><span class="cov0" title="0">{
-                s.Running = false
-                s.PID = 0
-        }</span>)
-}
-
-// waitForStartup 等待启动完成
-func (c *Controller) waitForStartup(ctx context.Context) error <span class="cov0" title="0">{
-        startupTimeout := 60 * time.Second
-        ticker := time.NewTicker(1 * time.Second)
-        defer ticker.Stop()
-        
-        deadline := time.Now().Add(startupTimeout)
-        
-        for </span><span class="cov0" title="0">{
-                select </span>{
-                case &lt;-ctx.Done():<span class="cov0" title="0">
-                        return ctx.Err()</span>
-                case &lt;-ticker.C:<span class="cov0" title="0">
-                        // 检查进程是否还在运行
-                        if !c.IsRunning() </span><span class="cov0" title="0">{
-                                return fmt.Errorf("Logstash启动失败")
-                        }</span>
-                        
-                        // TODO: 检查Logstash API或日志确认启动完成
-                        // 暂时使用简单的时间等待
-                        <span class="cov0" title="0">if time.Now().After(deadline) </span><span class="cov0" title="0">{
-                                return fmt.Errorf("启动超时")
-                        }</span>
-                        
-                        // 假设5秒后启动完成
-                        <span class="cov0" title="0">if time.Since(c.status.StartTime) &gt; 5*time.Second </span><span class="cov0" title="0">{
-                                return nil
-                        }</span>
-                }
-        }
-}
-
-// detectVersion 检测Logstash版本
-func (c *Controller) detectVersion() <span class="cov0" title="0">{
-        // 执行版本命令
-        cmd := exec.Command(c.config.LogstashPath, "--version")
-        output, err := cmd.Output()
-        if err != nil </span><span class="cov0" title="0">{
-                c.logger.WithError(err).Warn("获取Logstash版本失败")
-                return
-        }</span>
-        
-        // 解析版本
-        <span class="cov0" title="0">version := strings.TrimSpace(string(output))
-        if parts := strings.Fields(version); len(parts) &gt;= 2 </span><span class="cov0" title="0">{
-                version = parts[1]
-        }</span>
-        
-        <span class="cov0" title="0">c.updateStatus(func(s *core.LogstashStatus) </span><span class="cov0" title="0">{
-                s.Version = version
-        }</span>)
-        
-        <span class="cov0" title="0">c.logger.WithField("version", version).Info("检测到Logstash版本")</span>
-}
-
-// updateStatus 更新状态
-func (c *Controller) updateStatus(updater func(*core.LogstashStatus)) <span class="cov0" title="0">{
-        c.statusMutex.Lock()
-        defer c.statusMutex.Unlock()
-        updater(c.status)
-}</span>
-
-// GetLogContent 获取日志内容（用于调试）
-func (c *Controller) GetLogContent(lines int) ([]string, error) <span class="cov0" title="0">{
-        logFile := filepath.Join(c.config.LogDir, "logstash-plain.log")
-        
-        file, err := os.Open(logFile)
-        if err != nil </span><span class="cov0" title="0">{
-                return nil, fmt.Errorf("打开日志文件失败: %w", err)
-        }</span>
-        <span class="cov0" title="0">defer file.Close()
-        
-        // 读取最后N行
-        var result []string
-        scanner := bufio.NewScanner(file)
-        for scanner.Scan() </span><span class="cov0" title="0">{
-                result = append(result, scanner.Text())
-                if len(result) &gt; lines </span><span class="cov0" title="0">{
-                        result = result[1:]
+// loadConfigMetadata 加载单个配置的元数据
+func (m *Manager) loadConfigMetadata(configID string) (*ConfigMetadata, error) <span class="cov9" title="38">{
+        // 优先从单独的元数据文件读取
+        metadataPath := filepath.Join(m.config.ConfigDir, ".metadata", configID+".json")
+        if data, err := ioutil.ReadFile(metadataPath); err == nil </span><span class="cov7" title="16">{
+                var metadata ConfigMetadata
+                if err := json.Unmarshal(data, &amp;metadata); err == nil </span><span class="cov7" title="16">{
+                        return &amp;metadata, nil
                 }</span>
         }
         
-        <span class="cov0" title="0">return result, scanner.Err()</span>
+        // 加载所有元数据
+        <span class="cov8" title="22">allMetadata := make(map[string]*ConfigMetadata)
+        if data, err := ioutil.ReadFile(m.metadataFile); err == nil </span><span class="cov6" title="11">{
+                if err := json.Unmarshal(data, &amp;allMetadata); err != nil </span><span class="cov5" title="6">{
+                        return nil, err
+                }</span>
+        }
+        
+        <span class="cov7" title="16">metadata, ok := allMetadata[configID]
+        if !ok </span><span class="cov7" title="16">{
+                return nil, fmt.Errorf("配置元数据不存在")
+        }</span>
+        
+        <span class="cov0" title="0">return metadata, nil</span>
+}
+
+// deleteConfigMetadata 删除配置元数据
+func (m *Manager) deleteConfigMetadata(configID string) error <span class="cov2" title="2">{
+        // 删除单独的元数据文件
+        metadataPath := filepath.Join(m.config.ConfigDir, ".metadata", configID+".json")
+        if err := os.Remove(metadataPath); err != nil &amp;&amp; !os.IsNotExist(err) </span><span class="cov0" title="0">{
+                return err
+        }</span>
+        
+        // 同时更新总的元数据文件（向后兼容）
+        <span class="cov2" title="2">allMetadata := make(map[string]*ConfigMetadata)
+        if data, err := ioutil.ReadFile(m.metadataFile); err == nil </span><span class="cov2" title="2">{
+                json.Unmarshal(data, &amp;allMetadata)
+        }</span>
+        
+        // 删除元数据
+        <span class="cov2" title="2">delete(allMetadata, configID)
+        
+        // 保存到文件
+        if data, err := json.MarshalIndent(allMetadata, "", "  "); err == nil </span><span class="cov2" title="2">{
+                ioutil.WriteFile(m.metadataFile, data, 0644)
+        }</span>
+        
+        <span class="cov2" title="2">return nil</span>
+}
+
+// calculateHash 计算配置内容哈希
+func (m *Manager) calculateHash(content string) string <span class="cov8" title="27">{
+        // TODO: 实现哈希计算
+        return ""
+}</span>
+
+// isConfigFile 检查是否为配置文件
+func isConfigFile(filename string) bool <span class="cov0" title="0">{
+        return filepath.Ext(filename) == ".conf"
+}</span>
+
+// extractConfigID 从文件名提取配置ID
+func extractConfigID(filename string) string <span class="cov0" title="0">{
+        // 移除扩展名
+        name := filename[:len(filename)-len(filepath.Ext(filename))]
+        // 移除备份后缀
+        if idx := len(name) - 1; idx &gt; 0 &amp;&amp; name[idx] &gt;= '0' &amp;&amp; name[idx] &lt;= '9' </span><span class="cov0" title="0">{
+                // 可能是备份文件
+                return ""
+        }</span>
+        <span class="cov0" title="0">return name</span>
 }</pre>
 		
 		</div>
