@@ -5,25 +5,29 @@ package integration
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"logstash-platform/internal/platform/models"
 )
 
 // TestPlatformServer 模拟的管理平台服务器
 type TestPlatformServer struct {
-	server     *httptest.Server
-	router     *gin.Engine
-	agents     map[string]*models.Agent
-	configs    map[string]*models.Config
-	heartbeats map[string]time.Time
-	metrics    map[string]*models.Agent
-	mu         sync.RWMutex
+	server      *httptest.Server
+	router      *gin.Engine
+	agents      map[string]*models.Agent
+	configs     map[string]*models.Config
+	heartbeats  map[string]time.Time
+	metrics     map[string]*models.Agent
+	testResults map[string]*models.TestResult
+	mu          sync.RWMutex
 	
 	// WebSocket相关
 	wsUpgrader websocket.Upgrader
@@ -52,6 +56,16 @@ func NewTestPlatformServer() *TestPlatformServer {
 	s.server = httptest.NewServer(s.router)
 	
 	return s
+}
+
+// Start 启动服务器
+func (s *TestPlatformServer) Start() error {
+	return nil
+}
+
+// Stop 停止服务器
+func (s *TestPlatformServer) Stop() {
+	s.Close()
 }
 
 // GetURL 获取服务器URL
@@ -92,6 +106,10 @@ func (s *TestPlatformServer) setupRoutes() {
 	
 	// WebSocket
 	s.router.GET("/ws", s.handleWebSocket)
+	
+	// 测试相关路由
+	s.router.POST("/api/v1/test", s.handleCreateTest)
+	s.router.GET("/api/v1/test/:id", s.handleGetTestResult)
 }
 
 // handleRegister 处理注册请求
@@ -331,4 +349,181 @@ func (s *TestPlatformServer) SendWSMessage(agentID string, msg interface{}) erro
 	}
 	
 	return conn.WriteJSON(msg)
+}
+
+// handleCreateTest 处理创建测试请求
+func (s *TestPlatformServer) handleCreateTest(c *gin.Context) {
+	var req models.TestConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    "INVALID_REQUEST",
+			"message": err.Error(),
+		})
+		return
+	}
+	
+	// 生成测试ID
+	testID := generateID()
+	
+	// 创建测试结果
+	testResult := &models.TestResult{
+		TestID:      testID,
+		Status:      "running",
+		InputCount:  0,
+		OutputCount: 0,
+		Results:     []models.TestOutput{},
+		Errors:      []string{},
+		StartTime:   time.Now(),
+	}
+	
+	s.mu.Lock()
+	if s.testResults == nil {
+		s.testResults = make(map[string]*models.TestResult)
+	}
+	s.testResults[testID] = testResult
+	s.mu.Unlock()
+	
+	// 异步执行测试
+	go s.executeTest(testID, &req)
+	
+	c.JSON(http.StatusAccepted, gin.H{
+		"test_id": testID,
+		"status":  "running",
+		"message": "测试任务已创建",
+	})
+}
+
+// handleGetTestResult 处理获取测试结果请求
+func (s *TestPlatformServer) handleGetTestResult(c *gin.Context) {
+	testID := c.Param("id")
+	
+	s.mu.RLock()
+	result, exists := s.testResults[testID]
+	s.mu.RUnlock()
+	
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{
+			"code":    "TEST_NOT_FOUND",
+			"message": "测试任务不存在",
+		})
+		return
+	}
+	
+	c.JSON(http.StatusOK, result)
+}
+
+// executeTest 执行测试
+func (s *TestPlatformServer) executeTest(testID string, req *models.TestConfigRequest) {
+	// 获取配置
+	s.mu.RLock()
+	config, exists := s.configs[req.ConfigID]
+	s.mu.RUnlock()
+	
+	if !exists {
+		s.updateTestResult(testID, func(result *models.TestResult) {
+			result.Status = "failed"
+			result.Errors = append(result.Errors, "获取配置失败: 配置不存在")
+			endTime := time.Now()
+			result.EndTime = &endTime
+		})
+		return
+	}
+	
+	// 根据测试类型执行
+	switch req.TestData.Type {
+	case "sample":
+		s.executeSampleTest(testID, config, req.TestData.Samples)
+	case "kafka":
+		s.executeKafkaTest(testID, config, &req.TestData.KafkaConfig)
+	default:
+		s.updateTestResult(testID, func(result *models.TestResult) {
+			result.Status = "failed"
+			result.Errors = append(result.Errors, "不支持的测试类型: "+req.TestData.Type)
+			endTime := time.Now()
+			result.EndTime = &endTime
+		})
+	}
+}
+
+// executeSampleTest 执行样本测试
+func (s *TestPlatformServer) executeSampleTest(testID string, config *models.Config, samples []string) {
+	// 更新输入计数
+	s.updateTestResult(testID, func(result *models.TestResult) {
+		result.InputCount = len(samples)
+	})
+	
+	// 模拟Logstash处理
+	for i, sample := range samples {
+		// 解析输入
+		var input map[string]interface{}
+		if err := json.Unmarshal([]byte(sample), &input); err != nil {
+			// 如果不是JSON，作为字符串处理
+			input = map[string]interface{}{"message": sample}
+		}
+		
+		// 模拟处理
+		output := make(map[string]interface{})
+		for k, v := range input {
+			output[k] = v
+		}
+		
+		// 添加处理字段（简化的逻辑）
+		output["@timestamp"] = time.Now().Format(time.RFC3339)
+		output["processed"] = "true"
+		
+		// 根据配置内容添加特定处理
+		if strings.Contains(config.Content, "add_field") {
+			output["test_field"] = fmt.Sprintf("processed_%d", i)
+		}
+		
+		// 如果有错误级别，添加标签
+		if level, ok := input["level"]; ok && level == "ERROR" {
+			output["tags"] = []interface{}{"error"}
+		}
+		
+		// 添加到结果
+		s.updateTestResult(testID, func(result *models.TestResult) {
+			result.Results = append(result.Results, models.TestOutput{
+				Input:  sample,
+				Output: output,
+			})
+			result.OutputCount++
+		})
+		
+		// 模拟处理延迟
+		time.Sleep(100 * time.Millisecond)
+	}
+	
+	// 标记完成
+	s.updateTestResult(testID, func(result *models.TestResult) {
+		result.Status = "completed"
+		endTime := time.Now()
+		result.EndTime = &endTime
+	})
+}
+
+// executeKafkaTest 执行Kafka测试
+func (s *TestPlatformServer) executeKafkaTest(testID string, config *models.Config, kafkaConfig *models.KafkaConfig) {
+	// Kafka测试暂未实现
+	s.updateTestResult(testID, func(result *models.TestResult) {
+		result.Status = "failed"
+		result.Errors = append(result.Errors, "Kafka测试功能尚未实现")
+		endTime := time.Now()
+		result.EndTime = &endTime
+	})
+}
+
+// updateTestResult 更新测试结果
+func (s *TestPlatformServer) updateTestResult(testID string, update func(*models.TestResult)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	if result, exists := s.testResults[testID]; exists {
+		update(result)
+	}
+}
+
+// generateID 生成ID
+func generateID() string {
+	return uuid.New().String()
 }
